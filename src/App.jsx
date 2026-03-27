@@ -220,21 +220,6 @@ async function classifyBatch(batch, entityType) {
   }catch{return[];}
 }
 
-const SAMPLE=[
-  {id:"s1",date:"03/14/2025",description:"SUNRISE TRADING LLC - Payment",        amount:4800.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue — Sch-C L.1",      status:"pending"},
-  {id:"s2",date:"03/07/2025",description:"BLUE HORIZON SERVICES - Invoice #112", amount:1250.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.96,aiNote:"Business revenue",                   status:"pending"},
-  {id:"s3",date:"03/10/2025",description:"CONNECTPRO - Internet/Cable",          amount:-89.99,  aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — business internet",     status:"approved"},
-  {id:"s4",date:"03/18/2025",description:"CITYPOWER - Electric Bill",            amount:-274.50, aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — electricity",           status:"approved"},
-  {id:"s5",date:"03/19/2025",description:"UNITEL WIRELESS - Monthly Plan",       amount:-185.00, aiCategory:"Utilities",                aiConfidence:.93,aiNote:"Sch-C L.25 — business phone",        status:"approved"},
-  {id:"s6",date:"03/18/2025",description:"FIRST NATIONAL - Vehicle Loan Pmt",   amount:-1180.00,aiCategory:"Interest — Other",          aiConfidence:.91,aiNote:"Sch-C L.16b — loan interest",       status:"pending"},
-  {id:"s7",date:"03/03/2025",description:"Zelle to Carlos Andrade",              amount:-5000.00,aiCategory:"Owner's Draw",              aiConfidence:.99,aiNote:"NOT deductible — owner withdrawal",  status:"pending"},
-  {id:"s8",date:"03/28/2025",description:"GAS EXPRESS / QuickFuel Station",      amount:-198.40, aiCategory:"Car & Truck — Gasoline",   aiConfidence:.82,aiNote:"Sch-C L.9 — business fuel",         status:"pending"},
-  {id:"s9",date:"03/05/2025",description:"VALUEMART STORE (personal card)",      amount:-112.30, aiCategory:"Personal (Non-Deductible)",aiConfidence:.88,aiNote:"Personal — not deductible",          status:"pending"},
-  {id:"s10",date:"03/18/2025",description:"Internal Transfer to CHK-8847",       amount:-200.00, aiCategory:"Transfer",                 aiConfidence:.98,aiNote:"Inter-account — not deductible",     status:"approved"},
-  {id:"s11",date:"03/22/2025",description:"OFFICESUPPLY CO - Office Materials",  amount:-143.60, aiCategory:"Office Expenses",          aiConfidence:.90,aiNote:"Sch-C L.18 — office supplies",      status:"pending"},
-  {id:"s12",date:"03/25/2025",description:"METRO INSURANCE GROUP - Monthly",     amount:-320.00, aiCategory:"Insurance (Business)",     aiConfidence:.94,aiNote:"Sch-C L.15 — business insurance",   status:"approved"},
-];
-
 const ConfBar=({v=0})=>{
   const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";
   return(<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/></div><span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span></div>);
@@ -287,7 +272,6 @@ const OneTouchZone=({onDone,entityType})=>{
   );
 };
 
-// ── Firestore Setup Screen ────────────────────────────────────────────────
 const RULES_TEXT = `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -305,97 +289,54 @@ const FirestoreSetup=({fbUser,onRetry})=>{
   const [creating,setCreating]=useState(false);
   const [done,setDone]=useState(false);
   const [name,setName]=useState("");
-
   const copy=(text)=>{ navigator.clipboard.writeText(text); setCopied(true); setTimeout(()=>setCopied(false),2500); };
-
   const createDoc=async()=>{
     if(!name.trim()){return;}
     setCreating(true);
     try{
-      await setDoc(doc(db,"users",fbUser.uid),{
-        name:name.trim(), email:fbUser.email, role:"admin",
-        company:"OneTouch Tax", active:true, createdAt:new Date().toISOString(),
-      });
+      await setDoc(doc(db,"users",fbUser.uid),{name:name.trim(),email:fbUser.email,role:"admin",company:"OneTouch Tax",active:true,createdAt:new Date().toISOString()});
       setDone(true);
       setTimeout(()=>onRetry(),1500);
-    }catch(e){
-      alert("Erro: "+e.message+"\n\nVerifique se as regras do Firestore foram publicadas corretamente.");
-    }
+    }catch(e){ alert("Erro: "+e.message+"\n\nVerifique se as regras do Firestore foram publicadas corretamente."); }
     setCreating(false);
   };
-
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f0f7ff,#e8f4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Manrope',system-ui",padding:24}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp2{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:11px 14px;border-radius:10px;font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp2:focus{border-color:${BRAND.touchColor};}`}</style>
       <div style={{width:"100%",maxWidth:560,background:"#fff",borderRadius:24,border:"1px solid #e2e8f0",boxShadow:`0 24px 64px ${BRAND.touchColor}14`,overflow:"hidden"}}>
-
-        {/* Header */}
         <div style={{background:BRAND.gradient,padding:"24px 32px",display:"flex",alignItems:"center",gap:14}}>
           <div style={{fontSize:28}}>🔧</div>
-          <div>
-            <div style={{color:"#fff",fontWeight:800,fontSize:18,letterSpacing:"-0.5px"}}>Configuração inicial</div>
-            <div style={{color:"rgba(255,255,255,.7)",fontSize:13,marginTop:2}}>2 passos para liberar o acesso</div>
-          </div>
+          <div><div style={{color:"#fff",fontWeight:800,fontSize:18,letterSpacing:"-0.5px"}}>Configuração inicial</div><div style={{color:"rgba(255,255,255,.7)",fontSize:13,marginTop:2}}>2 passos para liberar o acesso</div></div>
         </div>
-
         <div style={{padding:"28px 32px"}}>
-          {/* Step indicator */}
-          <div style={{display:"flex",gap:8,marginBottom:24}}>
-            {[1,2].map(s=>(
-              <div key={s} style={{flex:1,height:4,borderRadius:2,background:step>=s?BRAND.touchColor:"#e2e8f0",transition:"background .3s"}}/>
-            ))}
-          </div>
-
+          <div style={{display:"flex",gap:8,marginBottom:24}}>{[1,2].map(s=><div key={s} style={{flex:1,height:4,borderRadius:2,background:step>=s?BRAND.touchColor:"#e2e8f0",transition:"background .3s"}}/>)}</div>
           {step===1&&(
             <div>
               <h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:6}}>Passo 1 — Publicar as regras do Firestore</h2>
               <p style={{color:"#64748b",fontSize:13,marginBottom:16,lineHeight:1.6}}>O Firestore está bloqueando o acesso. Cole as regras abaixo e clique em <strong>Publicar</strong>.</p>
-
               <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:16,marginBottom:14,position:"relative"}}>
                 <pre style={{margin:0,fontSize:11,color:"#334155",fontFamily:"'Courier New',monospace",lineHeight:1.6,whiteSpace:"pre-wrap",overflowX:"auto"}}>{RULES_TEXT}</pre>
-                <button onClick={()=>copy(RULES_TEXT)} style={{position:"absolute",top:10,right:10,background:copied?"#10b981":BRAND.gradient,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}>
-                  {copied?"✓ Copiado!":"📋 Copiar"}
-                </button>
+                <button onClick={()=>copy(RULES_TEXT)} style={{position:"absolute",top:10,right:10,background:copied?"#10b981":BRAND.gradient,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
               </div>
-
               <a href="https://console.firebase.google.com/project/onetouchtax-a3c84/firestore/rules" target="_blank" rel="noreferrer"
                 style={{display:"flex",alignItems:"center",gap:8,background:"#f0f9ff",border:`1.5px solid ${BRAND.touchColor}`,borderRadius:12,padding:"12px 16px",textDecoration:"none",marginBottom:20}}>
                 <span style={{fontSize:20}}>🔗</span>
-                <div>
-                  <div style={{color:BRAND.touchColor,fontWeight:700,fontSize:13}}>Abrir Firestore Rules →</div>
-                  <div style={{color:"#64748b",fontSize:11,marginTop:1}}>console.firebase.google.com · Aba "Regras"</div>
-                </div>
+                <div><div style={{color:BRAND.touchColor,fontWeight:700,fontSize:13}}>Abrir Firestore Rules →</div><div style={{color:"#64748b",fontSize:11,marginTop:1}}>console.firebase.google.com · Aba "Regras"</div></div>
               </a>
-
-              <button onClick={()=>setStep(2)} style={{width:"100%",background:BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                Regras publicadas → Próximo passo
-              </button>
+              <button onClick={()=>setStep(2)} style={{width:"100%",background:BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Regras publicadas → Próximo passo</button>
             </div>
           )}
-
           {step===2&&(
             <div>
               <h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:6}}>Passo 2 — Criar seu perfil de Admin</h2>
-              <p style={{color:"#64748b",fontSize:13,marginBottom:16,lineHeight:1.6}}>
-                Logado como <strong>{fbUser.email}</strong>. Informe seu nome para criar o perfil de administrador.
-              </p>
-
-              <div style={{marginBottom:16}}>
-                <label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Seu nome completo</label>
-                <input className="inp2" placeholder="Ex: Marcelo Queiroz" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createDoc()}/>
-              </div>
-
+              <p style={{color:"#64748b",fontSize:13,marginBottom:16,lineHeight:1.6}}>Logado como <strong>{fbUser.email}</strong>. Informe seu nome para criar o perfil de administrador.</p>
+              <div style={{marginBottom:16}}><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Seu nome completo</label><input className="inp2" placeholder="Ex: Marcelo Queiroz" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createDoc()}/></div>
               {done?(
-                <div style={{textAlign:"center",padding:"16px 0"}}>
-                  <div style={{fontSize:36,marginBottom:8}}>✅</div>
-                  <div style={{fontWeight:700,color:"#15803d",fontSize:15}}>Perfil criado! Entrando...</div>
-                </div>
+                <div style={{textAlign:"center",padding:"16px 0"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div style={{fontWeight:700,color:"#15803d",fontSize:15}}>Perfil criado! Entrando...</div></div>
               ):(
                 <div style={{display:"flex",gap:10}}>
                   <button onClick={()=>setStep(1)} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:12,padding:"13px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>← Voltar</button>
-                  <button onClick={createDoc} disabled={creating||!name.trim()} style={{flex:1,background:creating||!name.trim()?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:creating||!name.trim()?"not-allowed":"pointer",fontFamily:"inherit"}}>
-                    {creating?"Criando perfil...":"✓ Criar perfil Admin"}
-                  </button>
+                  <button onClick={createDoc} disabled={creating||!name.trim()} style={{flex:1,background:creating||!name.trim()?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:creating||!name.trim()?"not-allowed":"pointer",fontFamily:"inherit"}}>{creating?"Criando perfil...":"✓ Criar perfil Admin"}</button>
                 </div>
               )}
             </div>
@@ -406,10 +347,11 @@ const FirestoreSetup=({fbUser,onRetry})=>{
   );
 };
 
+// ── ClientApp — starts with EMPTY transactions (no demo data) ─────────────
 const ClientApp=({user,onLogout})=>{
   const [tab,setTab]=useState("home");
   const [entityType,setEntityType]=useState(user.entityType||"smllc");
-  const [txns,setTxns]=useState(SAMPLE);
+  const [txns,setTxns]=useState([]); // ← EMPTY for real users
   const cfg=ENTITY_CONFIGS[entityType];
   const income=txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
   const expense=txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
@@ -435,8 +377,20 @@ const ClientApp=({user,onLogout})=>{
       <div style={{marginLeft:212,flex:1,padding:"28px 28px 48px"}}>
         {tab==="home"&&<div>
           <div style={{marginBottom:22}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Olá, {user.name?.split(" ")[0]} 👋</h1><p style={{color:"#64748b",fontSize:13,margin:0}}>{user.company} · {cfg.form}</p></div>
-          <div className="card" style={{marginBottom:18,borderTop:`3px solid ${BRAND.touchColor}`,background:"linear-gradient(135deg,#f0f9ff,#fff)"}}><div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}><span style={{fontSize:30}}>⚡</span><div><div style={{fontSize:16,fontWeight:800,color:"#0f172a",letterSpacing:"-0.5px"}}>One Touch — Importar agora</div><div style={{fontSize:13,color:"#64748b"}}>Solte seu extrato. O app classifica tudo.</div></div></div><OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType}/></div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>{[{l:"Receita Total",v:`$${income.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:"#10b981",i:"📈"},{l:"Deduções",v:`$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:BRAND.touchColor,i:"📉"},{l:"Transações",v:txns.length,c:"#8b5cf6",i:"📋"},{l:"Pendentes",v:pending,c:"#f59e0b",i:"⏳"}].map((s,i)=><div key={i} className="card" style={{borderTop:`3px solid ${s.c}`}}><div style={{fontSize:24,marginBottom:6}}>{s.i}</div><div style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",marginTop:2,fontWeight:500}}>{s.l}</div></div>)}</div>
+          <div className="card" style={{marginBottom:18,borderTop:`3px solid ${BRAND.touchColor}`,background:"linear-gradient(135deg,#f0f9ff,#fff)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}><span style={{fontSize:30}}>⚡</span><div><div style={{fontSize:16,fontWeight:800,color:"#0f172a",letterSpacing:"-0.5px"}}>One Touch — Importar agora</div><div style={{fontSize:13,color:"#64748b"}}>Solte seu extrato. O app classifica tudo.</div></div></div>
+            <OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType}/>
+          </div>
+          {txns.length===0?(
+            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:44,marginBottom:12}}>📂</div>
+              <div style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:700,color:"#0f172a",marginBottom:8}}>Nenhuma transação ainda</div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Importe seu primeiro extrato bancário para começar a classificação.</div>
+              <button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Importar extrato →</button>
+            </div>
+          ):(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>{[{l:"Receita Total",v:`$${income.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:"#10b981",i:"📈"},{l:"Deduções",v:`$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:BRAND.touchColor,i:"📉"},{l:"Transações",v:txns.length,c:"#8b5cf6",i:"📋"},{l:"Pendentes",v:pending,c:"#f59e0b",i:"⏳"}].map((s,i)=><div key={i} className="card" style={{borderTop:`3px solid ${s.c}`}}><div style={{fontSize:24,marginBottom:6}}>{s.i}</div><div style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",marginTop:2,fontWeight:500}}>{s.l}</div></div>)}</div>
+          )}
         </div>}
         {tab==="import"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Importar Extrato</h1>
@@ -446,10 +400,14 @@ const ClientApp=({user,onLogout})=>{
         </div>}
         {tab==="transactions"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:0,letterSpacing:"-1px"}}>Transações</h1><button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",padding:"9px 18px",borderRadius:10,border:"none",fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer"}}>+ Importar</button></div>
-          <div className="card" style={{padding:0,overflow:"hidden"}}>
-            <div style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}><span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span>Status</span></div>
-            {txns.map(t=><div key={t.id} style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc"}}><span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span><span style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</span><span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>{t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span><CatBadge label={t.aiCategory||"—"} entityType={entityType}/><ConfBar v={t.aiConfidence||0}/><span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}}>{t.status==="approved"?"✓ Ok":t.status==="rejected"?"✗ Rev.":"⏳"}</span></div>)}
-          </div>
+          {txns.length===0?(
+            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"48px 24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:6}}>Nenhuma transação</div><div style={{fontSize:13,color:"#94a3b8"}}>Importe um extrato para começar.</div></div>
+          ):(
+            <div className="card" style={{padding:0,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}><span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span>Status</span></div>
+              {txns.map(t=><div key={t.id} style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc"}}><span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span><span style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</span><span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>{t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span><CatBadge label={t.aiCategory||"—"} entityType={entityType}/><ConfBar v={t.aiConfidence||0}/><span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}}>{t.status==="approved"?"✓ Ok":t.status==="rejected"?"✗ Rev.":"⏳"}</span></div>)}
+            </div>
+          )}
         </div>}
         {tab==="settings"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 22px",letterSpacing:"-1px"}}>Configurações</h1>
@@ -461,9 +419,10 @@ const ClientApp=({user,onLogout})=>{
   );
 };
 
+// ── AccountantApp — starts EMPTY too ──────────────────────────────────────
 const AccountantApp=({user,onLogout})=>{
   const [entityType,setEntityType]=useState("smllc");
-  const [txns,setTxns]=useState(SAMPLE.map(t=>({...t,finalCategory:t.aiCategory})));
+  const [txns,setTxns]=useState([]); // ← EMPTY for real accountants
   const [filter,setFilter]=useState("pending");
   const [search,setSearch]=useState("");
   const [editId,setEditId]=useState(null);
@@ -491,7 +450,7 @@ const AccountantApp=({user,onLogout})=>{
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><input className="si" placeholder="🔍  Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/><div style={{display:"flex",gap:6}}>{[["all","Todas"],["pending","Pendentes"],["approved","Aprovadas"],["rejected","Revisão"]].map(([k,l])=><button key={k} className={`fc ${filter===k?"a":""}`} onClick={()=>setFilter(k)}>{l} ({counts[k]})</button>)}</div></div>
           <div style={{display:"grid",gridTemplateColumns:"85px 1fr 108px 195px 80px 110px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}><span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span style={{textAlign:"center"}}>Ações</span></div>
-          {filtered.length===0&&<div style={{padding:48,textAlign:"center",color:"#94a3b8"}}><div style={{fontSize:36,marginBottom:8}}>🎉</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>Tudo validado!</div></div>}
+          {filtered.length===0&&<div style={{padding:48,textAlign:"center",color:"#94a3b8"}}><div style={{fontSize:36,marginBottom:8}}>{txns.length===0?"📋":"🎉"}</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>{txns.length===0?"Nenhuma transação para revisar":"Tudo validado!"}</div></div>}
           {filtered.map(t=>{
             const isEd=editId===t.id,type=getCatType(t.finalCategory||t.aiCategory,entityType),tm=TYPE_META[type];
             const rowBg=t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff";
@@ -645,11 +604,10 @@ const Loading=()=>(
   </div>
 );
 
-// ── App root ──────────────────────────────────────────────────────────────
 export default function App() {
   const [user,setUser]=useState(null);
   const [loading,setLoading]=useState(true);
-  const [setupData,setSetupData]=useState(null); // {fbUser, mode: "rules"|"doc"}
+  const [setupData,setSetupData]=useState(null);
 
   useEffect(()=>{
     return onAuthStateChanged(auth,async(fbUser)=>{
@@ -660,38 +618,25 @@ export default function App() {
             setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});
             setSetupData(null);
           } else {
-            // Doc não existe — mostrar setup para criar o perfil admin
-            setSetupData({fbUser, mode:"doc"});
+            setSetupData({fbUser,mode:"doc"});
             setUser(null);
           }
         }catch(e){
           const isPermission=e.code==="permission-denied"||e.message?.toLowerCase().includes("permission")||e.message?.toLowerCase().includes("missing or insufficient");
-          if(isPermission){
-            // Regras do Firestore bloqueando — mostrar setup
-            setSetupData({fbUser, mode:"rules"});
-          } else {
-            setSetupData(null);
-          }
+          if(isPermission){ setSetupData({fbUser,mode:"rules"}); } else { setSetupData(null); }
           setUser(null);
         }
-      } else {
-        setUser(null);
-        setSetupData(null);
-      }
+      } else { setUser(null); setSetupData(null); }
       setLoading(false);
     });
   },[]);
 
   const retryLogin=()=>{
-    setSetupData(null);
-    setLoading(true);
-    // Re-trigger auth check
+    setSetupData(null);setLoading(true);
     const fbUser=auth.currentUser;
     if(fbUser){
       getDoc(doc(db,"users",fbUser.uid)).then(snap=>{
-        if(snap.exists()&&snap.data().active!==false){
-          setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});
-        }
+        if(snap.exists()&&snap.data().active!==false) setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});
       }).catch(()=>{}).finally(()=>setLoading(false));
     } else { setLoading(false); }
   };
