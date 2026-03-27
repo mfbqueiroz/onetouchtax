@@ -1,420 +1,821 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import * as XLSX from "xlsx";
 
-const LOGO = "https://mfbq94082f8cf68-tgakw.wordpress.com/wp-content/uploads/2026/03/img_0248.jpeg";
-
-const useInView = (threshold = 0.12) => {
-  const ref = useRef(null);
-  const [vis, setVis] = useState(false);
-  useEffect(() => {
-    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVis(true); }, { threshold });
-    if (ref.current) io.observe(ref.current);
-    return () => io.disconnect();
-  }, []);
-  return [ref, vis];
+const BRAND = {
+  arcOuter:"#0a2a5e", arcMid1:"#0e3d8a", arcMid2:"#1055b8",
+  arcMid3:"#1a6fd4",  arcInner:"#2b89ee", arcCore:"#4aa3f5",
+  nameColor:"#0a2a5e", touchColor:"#1055b8",
+  taxColor:"#c8922a",  taxDark:"#a67520",
+  bg:"#ffffff",        bgDark:"#030d1c",
+  gradient:"linear-gradient(135deg,#1055b8,#0a2a5e)",
 };
 
-const useCount = (to, ms = 1600, active) => {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    let v = 0, id = setInterval(() => {
-      v += to / (ms / 14);
-      if (v >= to) { setN(to); clearInterval(id); } else setN(Math.floor(v));
-    }, 14);
-    return () => clearInterval(id);
-  }, [active, to, ms]);
-  return n;
-};
-
-const F = ({ children, d = 0, x = 0, y = 28, scale = 1 }) => {
-  const [ref, vis] = useInView();
+const FingerprintCircle = ({ size, pal = BRAND, opacity = 1 }) => {
+  const r = size / 2, cx = r, cy = r;
+  const sw = size * 0.044, gap = size * 0.065;
+  const arcPath = (radius) => {
+    const startA = (130 * Math.PI) / 180;
+    const endA   = (400 * Math.PI) / 180;
+    const x1 = cx + radius * Math.cos(startA);
+    const y1 = cy + radius * Math.sin(startA);
+    const x2 = cx + radius * Math.cos(endA);
+    const y2 = cy + radius * Math.sin(endA);
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius} ${radius} 0 1 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  };
+  const radii = [r*.96, r*.96-gap, r*.96-gap*2, r*.96-gap*3, r*.96-gap*4, r*.96-gap*5];
+  const colors = [pal.arcOuter,pal.arcMid1,pal.arcMid2,pal.arcMid3,pal.arcInner,pal.arcCore];
+  const sparkA = (265*Math.PI)/180;
+  const sparkR = r*.96-gap*2.5;
+  const sx = cx+sparkR*Math.cos(sparkA), sy = cy+sparkR*Math.sin(sparkA);
   return (
-    <div ref={ref} style={{
-      opacity: vis ? 1 : 0,
-      transform: vis ? "none" : `translate(${x}px,${y}px) scale(${scale})`,
-      transition: `opacity .65s ease ${d}s, transform .65s cubic-bezier(.22,1,.36,1) ${d}s`,
-    }}>{children}</div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" style={{ opacity }}>
+      <defs>
+        <filter id={`gf${size}`}>
+          <feGaussianBlur stdDeviation={size*.025} result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      {radii.map((rad,i) => (
+        <path key={i} d={arcPath(rad)} stroke={colors[i]} strokeWidth={sw} strokeLinecap="round" fill="none" opacity={1-i*.03}/>
+      ))}
+      <circle cx={sx} cy={sy} r={size*.042} fill={pal.arcCore} opacity=".95" filter={`url(#gf${size})`}/>
+      <circle cx={sx} cy={sy} r={size*.075} fill={pal.arcCore} opacity=".22"/>
+      <circle cx={sx} cy={sy} r={size*.13}  fill={pal.arcCore} opacity=".09"/>
+    </svg>
   );
 };
 
-const TXNS = [
-  { date:"Mar 15", desc:"SPECTRUM – Internet/Cable",     amt:"-$84.99",  cat:"Utilities",       line:"Sch-C L.25", c:"#10b981", p:true },
-  { date:"Mar 14", desc:"Zelle → Marcelo Queiroz",       amt:"-$6,500",  cat:"Owner's Draw",    line:"Non-Deduc.", c:"#8b5cf6", p:false },
-  { date:"Mar 13", desc:"REAL AUTO SALES Transfer",      amt:"+$5,150",  cat:"Gross Receipts",  line:"Sch-C L.1",  c:"#10b981", p:true },
-  { date:"Mar 12", desc:"Walmart – Office Supplies",     amt:"-$134.66", cat:"Office Expense",  line:"Sch-C L.18", c:"#4aa3f5", p:true },
-  { date:"Mar 11", desc:"WF PAYMENT – Auto Loan",        amt:"-$1,217",  cat:"Interest – Other",line:"Sch-C L.16b",c:"#4aa3f5", p:true },
-  { date:"Mar 10", desc:"STRIPE PAYOUT",                 amt:"+$3,840",  cat:"Gross Receipts",  line:"Sch-C L.1",  c:"#10b981", p:true },
-  { date:"Mar 09", desc:"Amazon – Business Supplies",    amt:"-$211.40", cat:"Office Expense",  line:"Sch-C L.18", c:"#f59e0b", p:false },
-  { date:"Mar 08", desc:"AT&T – Phone",                  amt:"-$92.00",  cat:"Utilities",       line:"Sch-C L.25", c:"#10b981", p:true },
+const Logo = ({ scale=1, dark=false }) => {
+  const markSize=260*scale, nameSize=72*scale, taxSize=27*scale;
+  const c1 = dark?"#ffffff":BRAND.nameColor;
+  const c2 = dark?BRAND.arcCore:BRAND.touchColor;
+  const tc = dark?"#ffe08a":BRAND.taxColor;
+  const tcd= dark?BRAND.arcCore:BRAND.taxDark;
+  const lc = dark?"#ffffff20":`${BRAND.nameColor}22`;
+  const gp = dark ? {
+    arcOuter:BRAND.arcCore+"40",arcMid1:BRAND.arcCore+"55",arcMid2:BRAND.arcCore+"66",
+    arcMid3:BRAND.arcCore+"77",arcInner:BRAND.arcCore+"88",arcCore:BRAND.arcCore+"99",
+  } : {
+    arcOuter:BRAND.arcOuter+"22",arcMid1:BRAND.arcMid1+"2e",arcMid2:BRAND.arcMid2+"3a",
+    arcMid3:BRAND.arcMid3+"44",arcInner:BRAND.arcInner+"50",arcCore:BRAND.arcCore+"60",
+  };
+  return (
+    <div style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center" }}>
+      <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:1,pointerEvents:"none" }}>
+        <FingerprintCircle size={markSize} pal={gp} opacity={1}/>
+      </div>
+      <div style={{ position:"relative",zIndex:2,display:"flex",flexDirection:"column",
+        alignItems:"center",gap:6*scale,padding:`${markSize*.14}px ${markSize*.22}px` }}>
+        <div style={{ fontFamily:"'Manrope',system-ui",fontSize:nameSize,fontWeight:800,
+          letterSpacing:`${-2.5*scale}px`,lineHeight:1,whiteSpace:"nowrap" }}>
+          <span style={{ background:`linear-gradient(90deg,${c1},${c2})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>One</span>
+          <span style={{ background:`linear-gradient(90deg,${c2},${dark?"#a0c8ff":BRAND.arcInner})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>Touch</span>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:12*scale }}>
+          <div style={{ height:1.5*scale,width:36*scale,background:lc,borderRadius:2 }}/>
+          <div style={{ fontFamily:"'Manrope',system-ui",fontSize:taxSize,fontWeight:700,
+            letterSpacing:`${5*scale}px`,
+            background:`linear-gradient(90deg,${tcd},${tc})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>TAX</div>
+          <div style={{ height:1.5*scale,width:36*scale,background:lc,borderRadius:2 }}/>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const NavLogo = ({ dark=false }) => (
+  <div style={{ position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center" }}>
+    <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:1,pointerEvents:"none" }}>
+      <FingerprintCircle size={68} pal={dark?{
+        arcOuter:BRAND.arcCore+"40",arcMid1:BRAND.arcCore+"55",arcMid2:BRAND.arcCore+"66",
+        arcMid3:BRAND.arcCore+"77",arcInner:BRAND.arcCore+"88",arcCore:BRAND.arcCore+"99",
+      }:{
+        arcOuter:BRAND.arcOuter+"22",arcMid1:BRAND.arcMid1+"2e",arcMid2:BRAND.arcMid2+"3a",
+        arcMid3:BRAND.arcMid3+"44",arcInner:BRAND.arcInner+"50",arcCore:BRAND.arcCore+"60",
+      }} opacity={1}/>
+    </div>
+    <div style={{ position:"relative",zIndex:2,padding:"3px 12px",display:"flex",flexDirection:"column",alignItems:"center",gap:1 }}>
+      <div style={{ fontFamily:"'Manrope',system-ui",fontSize:19,fontWeight:800,letterSpacing:"-0.8px",lineHeight:1,whiteSpace:"nowrap" }}>
+        <span style={{ background:`linear-gradient(90deg,${dark?"#fff":BRAND.nameColor},${dark?BRAND.arcCore:BRAND.touchColor})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>One</span>
+        <span style={{ background:`linear-gradient(90deg,${dark?BRAND.arcCore:BRAND.touchColor},${dark?"#a0c8ff":BRAND.arcInner})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>Touch</span>
+      </div>
+      <div style={{ fontFamily:"'Manrope',system-ui",fontSize:7.5,fontWeight:700,letterSpacing:"3px",
+        background:`linear-gradient(90deg,${dark?BRAND.arcCore:BRAND.taxDark},${dark?"#ffe08a":BRAND.taxColor})`,
+        WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>TAX</div>
+    </div>
+  </div>
+);
+
+const AppIcon = ({ size=32 }) => {
+  const rd = size * 0.22;
+  return (
+    <div style={{ width:size,height:size,borderRadius:rd,
+      background:`linear-gradient(145deg,${BRAND.arcOuter},${BRAND.bgDark})`,
+      display:"flex",alignItems:"center",justifyContent:"center",
+      boxShadow:"0 2px 8px #00000050",flexShrink:0 }}>
+      <FingerprintCircle size={size*.76} pal={BRAND}/>
+    </div>
+  );
+};
+
+const ENTITY_CONFIGS = {
+  smllc:       { label:"LLC Membro Único",    form:"Schedule C",   color:BRAND.touchColor },
+  mmllc:       { label:"LLC Multi-Membros",   form:"Form 1065",    color:"#8b5cf6" },
+  scorp:       { label:"S-Corporation",       form:"Form 1120-S",  color:"#10b981" },
+  ccorp:       { label:"C-Corporation",       form:"Form 1120",    color:"#f59e0b" },
+  partnership: { label:"Partnership",         form:"Form 1065",    color:"#ef4444" },
+  sole_prop:   { label:"Sole Proprietorship", form:"Schedule C",   color:"#06b6d4" },
+};
+
+const CATEGORIES = {
+  smllc: {
+    income:["Gross Receipts or Sales","Other income"],
+    expenses:["Advertising","Car & Truck — Gasoline","Car & Truck — Repairs","Contract Labor (1099-NEC)",
+      "Depreciation / Section 179","Insurance (Business)","Interest — Other","Legal & Professional Services",
+      "Office Expenses","Rent — Business Property","Repairs & Maintenance","Supplies","Taxes & Licenses",
+      "Travel (Business)","Meals (50% deductible)","Utilities","Wages (W-2 Employees)","Other Business Expenses"],
+    nonDeduc:["Owner's Draw","Personal (Non-Deductible)","Transfer"],
+  },
+  scorp: {
+    income:["Gross Receipts or Sales","Other Income"],
+    expenses:["Compensation of Officers","Salaries & Wages (Other Emp.)","Repairs & Maintenance",
+      "Rents","Taxes & Licenses","Interest Expense","Depreciation","Advertising","Employee Benefits","Other Deductions"],
+    nonDeduc:["Shareholder Distributions","Personal (Non-Deductible)","Transfer"],
+  },
+  ccorp: {
+    income:["Gross Receipts or Sales","Dividends Received","Interest Income","Other Income"],
+    expenses:["Compensation of Officers","Salaries & Wages","Repairs & Maintenance","Rents","Taxes & Licenses",
+      "Interest Expense","Charitable Contributions","Depreciation","Advertising","Employee Benefits","Other Deductions"],
+    nonDeduc:["Dividends Paid to Shareholders","Personal Expenses of Officers","Transfer"],
+  },
+  mmllc: {
+    income:["Gross Receipts or Sales","Other Income"],
+    expenses:["Salaries & Wages","Guaranteed Payments to Partners","Repairs & Maintenance","Rent",
+      "Taxes & Licenses","Interest Expense","Depreciation","Advertising","Employee Benefits","Other Deductions"],
+    nonDeduc:["Partner Distributions (K-1)","Personal (Non-Deductible)","Transfer"],
+  },
+  partnership: {
+    income:["Gross Receipts or Sales","Other Income"],
+    expenses:["Salaries & Wages","Guaranteed Payments to Partners","Repairs & Maintenance","Rent",
+      "Taxes & Licenses","Interest Expense","Depreciation","Advertising","Employee Benefits","Other Deductions"],
+    nonDeduc:["Partner Distributions","Personal (Non-Deductible)","Transfer"],
+  },
+  sole_prop: {
+    income:["Gross Receipts or Sales","Other Business Income"],
+    expenses:["Advertising","Car & Truck — Gasoline","Contract Labor (1099-NEC)","Insurance","Interest Expense",
+      "Legal & Professional","Office Expenses","Rent — Business Property","Repairs & Maintenance","Supplies",
+      "Taxes & Licenses","Meals (50% deductible)","Utilities","Other Business Expenses"],
+    nonDeduc:["Owner's Draw","Personal (Non-Deductible)","Transfer"],
+  },
+};
+
+const getCatType = (cat,et) => {
+  const c = CATEGORIES[et]||CATEGORIES.smllc;
+  if(c.income.includes(cat)) return "income";
+  if(c.expenses.includes(cat)) return "expense";
+  if(c.nonDeduc.includes(cat)) return "nondeduc";
+  return "other";
+};
+const TYPE_META = {
+  income:  { bg:"#f0fdf4",text:"#15803d",dot:"#10b981" },
+  expense: { bg:"#f0f9ff",text:"#0369a1",dot:BRAND.touchColor },
+  nondeduc:{ bg:"#fdf4ff",text:"#7e22ce",dot:"#a855f7" },
+  other:   { bg:"#f8fafc",text:"#475569",dot:"#94a3b8" },
+};
+
+const USERS = [
+  { id:1, email:"marcelo@onetouchtax.com", password:"ott2025", role:"client",
+    name:"Marcelo Queiroz", company:"GS Car Rental / Queiroz Consulting LLC",
+    entityType:"smllc", bank:"Bank of America", account:"8981 1438 1791", avatar:"MQ" },
+  { id:2, email:"cpa@onetouchtax.com", password:"cpa2025", role:"accountant",
+    name:"CPA Partner", company:"Escritório Contábil Parceiro", avatar:"CP" },
 ];
 
-const CATS = [
-  { name:"Gross Receipts", pct:100, color:"#10b981", amt:"$8,990" },
-  { name:"Owner's Draw",   pct:72,  color:"#8b5cf6", amt:"$6,500" },
-  { name:"Auto Loan",      pct:14,  color:"#4aa3f5", amt:"$1,217" },
-  { name:"Office Expense", pct:4,   color:"#f59e0b", amt:"$346"   },
-  { name:"Utilities",      pct:2,   color:"#64748b", amt:"$177"   },
+function parseBankText(text) {
+  const txns=[], lines=text.split("\n");
+  const re=/(\d{2}\/\d{2}\/\d{2,4})\s+(.{5,80}?)\s+([-–]?[\d,]{1,10}\.\d{2})(?:\s|$)/;
+  lines.forEach((line,i)=>{
+    const m=re.exec(line.trim().replace(/\s+/g," "));
+    if(m){
+      const amt=parseFloat(m[3].replace(/[,–]/g,""));
+      if(!isNaN(amt)&&Math.abs(amt)>.01)
+        txns.push({id:`p${i}-${Math.random()}`,date:m[1],description:m[2].trim(),amount:amt,aiCategory:null,status:"unclassified"});
+    }
+  });
+  return txns;
+}
+
+async function parsePDF(file) {
+  return new Promise(resolve=>{
+    if(!window.pdfjsLib){resolve([]);return;}
+    const reader=new FileReader();
+    reader.onload=async(e)=>{
+      try{
+        const pdf=await window.pdfjsLib.getDocument({data:e.target.result}).promise;
+        let full="";
+        for(let p=1;p<=pdf.numPages;p++){
+          const pg=await pdf.getPage(p);
+          const ct=await pg.getTextContent();
+          full+=ct.items.map(i=>i.str).join(" ")+"\n";
+        }
+        resolve(parseBankText(full));
+      }catch{resolve([]);}
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function parseSpreadsheet(file) {
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:"binary"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+        const txns=[];
+        rows.forEach((row,i)=>{
+          if(i===0)return;
+          const date=String(row[0]||"").trim(), desc=String(row[1]||"").trim();
+          const raw=String(row[2]||row[3]||"").replace(/[$,\s]/g,"");
+          const amt=parseFloat(raw);
+          if(date&&desc&&!isNaN(amt))
+            txns.push({id:`x${i}-${Math.random()}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});
+        });
+        resolve(txns);
+      }catch{resolve([]);}
+    };
+    reader.readAsBinaryString(file);
+  });
+}
+
+const ENTITY_RULES = {
+  smllc:`SCHEDULE C: Mobile deposits/"REAL AUTO SALES LLC"/"OGM TRADING LLC"→Gross Receipts. PROG SELECT INS→Insurance. SPECTRUM/DUKEENERGY→Utilities. T-MOBILE→Utilities. JUSTBCLAU→Wages. Costco Gas/Shell/7-Eleven fuel→Car & Truck — Gasoline. Mechanic/body shop→Car & Truck — Repairs. "Zelle to Marcelo Queiroz"→Owner's Draw. WF Payment/Westlake→Interest — Other. Orange County FL→Taxes & Licenses. SUNBIZ/BOIRCOM→Taxes & Licenses. Independent contractors→Contract Labor (1099-NEC). Attorney/accountant→Legal & Professional Services. Grocery/Publix/Walmart/ALDI/Rokka's→Personal. Amazon Store Card/clothing→Personal. Bank transfers→Transfer. Restaurants w business purpose→Meals (50%).`,
+  scorp:`FORM 1120-S: Owner-employee salary→Compensation of Officers (REQUIRED). Distributions→Shareholder Distributions (NOT deductible). Other employees W-2→Salaries & Wages.`,
+  ccorp:`FORM 1120: Executive salaries→Compensation of Officers. Dividends paid→Dividends Paid (NOT deductible). Donations→Charitable Contributions (max 10%).`,
+  mmllc:`FORM 1065: Fixed partner payments→Guaranteed Payments to Partners. Distributions→Partner Distributions (K-1).`,
+  partnership:`FORM 1065: Same as MMLLC.`,
+  sole_prop:`SCHEDULE C: Same as SMLLC. Owner draws→Owner's Draw (NOT deductible).`,
+};
+
+async function classifyBatch(batch, entityType) {
+  const cfg=ENTITY_CONFIGS[entityType];
+  const cats=CATEGORIES[entityType]||CATEGORIES.smllc;
+  const allCats=[...cats.income,...cats.expenses,...cats.nonDeduc];
+  const prompt=`You are a US tax expert for ${cfg.label} (${cfg.form}).
+${ENTITY_RULES[entityType]||""}
+Categories: ${allCats.map((c,i)=>`${i+1}. ${c}`).join(", ")}
+Respond ONLY valid JSON array, no markdown:
+[{"id":<id>,"category":"<exact label>","confidence":<0.0-1.0>,"note":"<brief IRS reason>"}]
+Transactions: ${JSON.stringify(batch.map(t=>({id:t.id,date:t.date,description:t.description,amount:t.amount})))}`;
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]}),
+    });
+    const data=await res.json();
+    const text=(data.content?.[0]?.text||"[]").replace(/```json|```/g,"").trim();
+    return JSON.parse(text);
+  }catch{return[];}
+}
+
+const SAMPLE=[
+  {id:"s1",date:"12/13/2024",description:"REAL AUTO SALES LLC Transfer",         amount:5150.00,aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue — Sch-C L.1",          status:"pending"},
+  {id:"s2",date:"12/06/2024",description:"REAL AUTO SALES LLC Transfer",         amount:1000.00,aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue",                         status:"pending"},
+  {id:"s3",date:"12/09/2024",description:"SPECTRUM - Internet/Cable",            amount:-84.99, aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — business internet",           status:"approved"},
+  {id:"s4",date:"12/16/2024",description:"DUKEENERGY - Electric Bill",           amount:-361.72,aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — electricity",                 status:"approved"},
+  {id:"s5",date:"12/17/2024",description:"T-MOBILE PCS SVC",                     amount:-300.24,aiCategory:"Utilities",                aiConfidence:.93,aiNote:"Sch-C L.25 — phone",                      status:"approved"},
+  {id:"s6",date:"12/16/2024",description:"WF PAYMENT - Auto Loan",               amount:-1217.45,aiCategory:"Interest — Other",        aiConfidence:.91,aiNote:"Sch-C L.16b — loan interest",             status:"pending"},
+  {id:"s7",date:"12/02/2024",description:"Zelle to Marcelo Queiroz",             amount:-6500.00,aiCategory:"Owner's Draw",            aiConfidence:.99,aiNote:"NOT deductible — owner's draw",            status:"pending"},
+  {id:"s8",date:"12/30/2024",description:"Rokka's Market / Shell Service",       amount:-202.07,aiCategory:"Car & Truck — Gasoline",   aiConfidence:.81,aiNote:"Sch-C L.9 — business fuel",               status:"pending"},
+  {id:"s9",date:"12/02/2024",description:"Walmart (card)",                       amount:-134.66,aiCategory:"Personal (Non-Deductible)",aiConfidence:.89,aiNote:"Personal grocery",                         status:"pending"},
+  {id:"s10",date:"12/16/2024",description:"Online Banking transfer to CHK 0210",amount:-100.00, aiCategory:"Transfer",                aiConfidence:.98,aiNote:"Inter-account transfer",                   status:"approved"},
 ];
 
-export default function App() {
-  const [statsRef, statsVis] = useInView(.3);
-  const [expRef, expVis] = useInView(.1);
-  const [chartRef, chartVis] = useInView(.2);
-  const [planHover, setPlanHover] = useState(null);
-  const [rowHover, setRowHover] = useState(null);
-  const [activeTab, setActiveTab] = useState("all");
-  const [validating, setValidating] = useState(null);
-  const [validated, setValidated] = useState([]);
+const ConfBar = ({v=0})=>{
+  const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:5}}>
+      <div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/>
+      </div>
+      <span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span>
+    </div>
+  );
+};
+const CatBadge=({label,entityType})=>{
+  const type=getCatType(label,entityType);
+  const s=TYPE_META[type];
+  return(
+    <span style={{background:s.bg,color:s.text,fontSize:10,fontWeight:700,padding:"2px 8px",
+      borderRadius:20,display:"inline-block",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+      {label}
+    </span>
+  );
+};
 
-  const c98 = useCount(98, 1400, statsVis);
-  const c6  = useCount(6,  1000, statsVis);
-  const c14 = useCount(14, 1200, statsVis);
+const OneTouchZone=({onDone,entityType})=>{
+  const [phase,setPhase]=useState("idle");
+  const [progress,setProgress]=useState(0);
+  const [count,setCount]=useState(0);
+  const [dragging,setDragging]=useState(false);
+  const fileRef=useRef();
 
-  const handleValidate = (i) => {
-    setValidating(i);
-    setTimeout(() => { setValidating(null); setValidated(v => [...v, i]); }, 900);
+  useEffect(()=>{
+    if(!window.pdfjsLib){
+      const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";};
+      document.head.appendChild(s);
+    }
+  },[]);
+
+  const process=useCallback(async(file)=>{
+    const ext=file.name.split(".").pop().toLowerCase();
+    setPhase("reading");setProgress(10);
+    let raw=[];
+    if(ext==="pdf") raw=await parsePDF(file);
+    else raw=await parseSpreadsheet(file);
+    if(raw.length===0){setPhase("idle");return;}
+    setCount(raw.length);setPhase("classifying");setProgress(30);
+    const result=[...raw];
+    const BATCH=15;
+    for(let i=0;i<raw.length;i+=BATCH){
+      const batch=raw.slice(i,i+BATCH);
+      const classified=await classifyBatch(batch,entityType);
+      const map={};classified.forEach(r=>{map[r.id]=r;});
+      batch.forEach((t,bi)=>{
+        result[i+bi]=map[t.id]
+          ?{...t,aiCategory:map[t.id].category,aiConfidence:map[t.id].confidence,aiNote:map[t.id].note,status:"pending"}
+          :{...t,aiCategory:"Other Business Expenses",aiConfidence:.4,status:"pending"};
+      });
+      setProgress(30+Math.round(((i+BATCH)/raw.length)*65));
+    }
+    setProgress(100);setPhase("done");
+    setTimeout(()=>onDone(result),600);
+  },[entityType,onDone]);
+
+  const handleFile=f=>{if(f)process(f);};
+  const onDrop=useCallback(e=>{e.preventDefault();setDragging(false);handleFile(e.dataTransfer.files?.[0]);},[handleFile]);
+
+  const icons={idle:"📂",reading:"🔍",classifying:"📲",done:"✅"};
+  const titles={
+    idle:<>Arraste o extrato{" "}<span style={{color:BRAND.touchColor}}>aqui</span></>,
+    reading:"Lendo arquivo...",
+    classifying:`Classificando ${count} transações...`,
+    done:`${count} transações classificadas!`,
   };
 
-  const plans = [
-    { icon:"🌱", badge:null, accent:"#10b981", bg:"#0a1530", border:"1px solid #1e293b",
-      name:"Starter", sub:"Pequeno Porte", price:"$39", cents:",90", vol:"200 transações/mês",
-      desc:"Autônomos e microempresas", cta:"Começar grátis", ctaBg:"#0f2040", ctaC:"#94a3b8",
-      features:["Classificação automática","Import PDF · Excel · CSV","1 tipo de entidade","Auto-validação","Dashboard financeiro","Suporte e-mail 48h","Histórico 1 ano"] },
-    { icon:"🚀", badge:"✦ MAIS ESCOLHIDO", accent:"#4aa3f5", bg:"#071840", border:"2px solid #1055b8",
-      name:"Growth", sub:"Médio Porte", price:"$59", cents:",90", vol:"750 transações/mês",
-      desc:"PMEs com múltiplas contas", cta:"Assinar Growth", ctaBg:"#1055b8", ctaC:"#fff",
-      features:["Classificação com nota IRS","Import multi-banco","6 tipos de entidade","Auto-validação","Relatórios mensais","Export QuickBooks · CSV","Alertas de baixa confiança","Suporte prioritário 24h","Histórico 3 anos"] },
-    { icon:"🏢", badge:null, accent:"#8b5cf6", bg:"#0a1530", border:"1px solid #1e293b",
-      name:"Enterprise", sub:"Grande Porte", price:"$129", cents:",90", vol:"Ilimitado ♾️",
-      desc:"Grupos e escritórios contábeis", cta:"Falar com vendas", ctaBg:"#0f172a", ctaC:"#fff",
-      features:["Transações ilimitadas","Classificação auditável + IRS","Até 10 entidades","Auto-validação","Relatórios avançados + P&L","Multi-contador","API REST (QuickBooks/Xero)","White-label","Suporte SLA 2h"] },
-  ];
+  return(
+    <div onDrop={onDrop} onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
+      onClick={()=>phase==="idle"&&fileRef.current?.click()}
+      style={{border:`2px dashed ${dragging?BRAND.touchColor:phase==="done"?"#10b981":"#bae6fd"}`,
+        borderRadius:20,padding:"52px 32px",textAlign:"center",cursor:phase==="idle"?"pointer":"default",
+        background:dragging?"#f0f9ff":phase==="done"?"#f0fdf4":"#f8fbff",transition:"all .2s"}}>
+      <div style={{fontSize:48,marginBottom:14,
+        animation:phase==="classifying"?"spin 1.5s linear infinite":phase==="idle"?"float 3s ease-in-out infinite":"none"}}>
+        {icons[phase]}
+      </div>
+      <div style={{fontFamily:"'Manrope',system-ui",fontSize:19,fontWeight:700,color:"#0f172a",marginBottom:6}}>
+        {titles[phase]}
+      </div>
+      <div style={{fontSize:13,color:"#64748b"}}>
+        {phase==="idle"?"PDF · Excel · CSV — classificação automática":phase==="classifying"?`${ENTITY_CONFIGS[entityType]?.form} · ${progress}% concluído`:"Abrindo painel..."}
+      </div>
+      {phase!=="idle"&&(
+        <div style={{marginTop:18,height:5,background:"#e2e8f0",borderRadius:3,overflow:"hidden",maxWidth:280,margin:"18px auto 0"}}>
+          <div style={{height:"100%",width:`${progress}%`,borderRadius:3,
+            background:phase==="done"?"#10b981":BRAND.gradient,transition:"width .4s ease"}}/>
+        </div>
+      )}
+      {phase==="idle"&&(
+        <div style={{marginTop:18,display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+          {["📄 PDF","📊 Excel (.xlsx)","📃 CSV"].map(f=>(
+            <span key={f} style={{background:"#e0f2fe",color:"#0369a1",fontSize:12,fontWeight:600,padding:"4px 12px",borderRadius:20}}>{f}</span>
+          ))}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls,.xlsm,.csv"
+        style={{display:"none"}} onChange={e=>handleFile(e.target.files?.[0])}/>
+    </div>
+  );
+};
 
-  return (
-    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif", background:"#030d1c", color:"#f8fafc", overflowX:"hidden", lineHeight:1.5 }}>
+const ClientApp=({user,onLogout})=>{
+  const [tab,setTab]=useState("home");
+  const [entityType,setEntityType]=useState(user.entityType||"smllc");
+  const [txns,setTxns]=useState(SAMPLE);
+  const cfg=ENTITY_CONFIGS[entityType];
+  const income=txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const expense=txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
+  const pending=txns.filter(t=>t.status==="pending").length;
+  const NAV=[{id:"home",label:"Home",icon:"🏠"},{id:"import",label:"Importar",icon:"📂"},
+    {id:"transactions",label:"Transações",icon:"📋"},{id:"settings",label:"Config.",icon:"⚙️"}];
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui",display:"flex"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0}
-        ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a1a35}::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:3px}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-        @keyframes rowIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
-        .tab{background:none;border:none;color:#475569;font-size:13px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;transition:all .2s;font-family:inherit}
-        .tab.active{background:#0a1a35;color:#4aa3f5}
-        .tab:hover:not(.active){color:#94a3b8}
-        .btn-primary{background:#1055b8;color:#fff;border:none;border-radius:12px;padding:16px 36px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s}
-        .btn-primary:hover{background:#1a6fd4;transform:translateY(-1px);box-shadow:0 8px 24px rgba(16,85,184,.4)}
-        .btn-ghost{background:transparent;color:#64748b;border:1px solid #1e293b;border-radius:12px;padding:16px 28px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s}
-        .btn-ghost:hover{border-color:#334155;color:#94a3b8}
-        .nav-link{color:#475569;font-size:14px;font-weight:500;text-decoration:none;transition:color .2s;cursor:pointer}
-        .nav-link:hover{color:#f8fafc}
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;}
+        .ntb{background:none;border:none;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;
+          font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;transition:all .15s;color:#64748b;width:100%;}
+        .ntb.a{background:#f0f9ff;color:${BRAND.touchColor};font-weight:700;}
+        .ntb:hover:not(.a){background:#f1f5f9;color:#334155;}
+        .card{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:22px;}
+        @keyframes spin{to{transform:rotate(360deg);}}
+        @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
       `}</style>
 
-      {/* NAV */}
-      <nav style={{ position:"sticky",top:0,zIndex:100,background:"rgba(3,13,28,.88)",backdropFilter:"blur(24px) saturate(180%)",borderBottom:"1px solid rgba(255,255,255,.06)",padding:"10px 40px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:20 }}>
-        <img src={LOGO} alt="OneTouch Tax" style={{ height:44,width:"auto",borderRadius:8 }}/>
-        <div style={{ display:"flex",gap:24,alignItems:"center" }}>
-          <a className="nav-link" href="#como">Como funciona</a>
-          <a className="nav-link" href="#despesas">Despesas</a>
-          <a className="nav-link" href="#planos">Planos</a>
-          <button className="btn-primary" style={{ padding:"9px 20px",fontSize:13,borderRadius:10 }}>Começar grátis →</button>
+      <div style={{width:212,background:"#fff",borderRight:"1px solid #e2e8f0",
+        padding:"20px 12px",display:"flex",flexDirection:"column",
+        position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
+          <NavLogo dark={false}/>
         </div>
-      </nav>
-
-      {/* HERO */}
-      <section style={{ minHeight:"94vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"80px 24px 60px",textAlign:"center",position:"relative",overflow:"hidden" }}>
-        {[["50%","20%",600,600,"rgba(16,85,184,.18)"],["15%","50%",320,320,"rgba(74,163,245,.1)"],["80%","35%",280,280,"rgba(200,146,42,.08)"]].map(([l,t,w,h,c],i)=>(
-          <div key={i} style={{ position:"absolute",top:t,left:l,transform:"translateX(-50%)",width:w,height:h,background:`radial-gradient(circle,${c} 0%,transparent 70%)`,pointerEvents:"none" }}/>
-        ))}
-        <div style={{ position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(74,163,245,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(74,163,245,.04) 1px,transparent 1px)",backgroundSize:"60px 60px",pointerEvents:"none" }}/>
-
-        <F d={0}>
-          <div style={{ display:"inline-flex",alignItems:"center",gap:8,background:"rgba(74,163,245,.1)",border:"1px solid rgba(74,163,245,.22)",borderRadius:100,padding:"6px 18px",fontSize:11,color:"#4aa3f5",fontWeight:700,letterSpacing:"2.5px",textTransform:"uppercase",marginBottom:36 }}>
-            🇧🇷🇺🇸 &nbsp;Lançamento 2026 · Para brasileiros nos EUA
+        <div style={{background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:9,
+          padding:"7px 10px",marginBottom:16}}>
+          <div style={{fontSize:10,color:BRAND.touchColor,fontWeight:800,textTransform:"uppercase",letterSpacing:.8}}>{cfg.form}</div>
+          <div style={{fontSize:12,color:BRAND.arcOuter,fontWeight:600,marginTop:1}}>{cfg.label}</div>
+        </div>
+        <nav style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+          {NAV.map(n=>(
+            <button key={n.id} className={`ntb ${tab===n.id?"a":""}`} onClick={()=>setTab(n.id)}>
+              {n.icon} {n.label}
+              {n.id==="import"&&<span style={{marginLeft:"auto",background:BRAND.touchColor,color:"#fff",
+                fontSize:9,fontWeight:800,padding:"1px 7px",borderRadius:10}}>1 toque</span>}
+            </button>
+          ))}
+        </nav>
+        <div style={{borderTop:"1px solid #f1f5f9",paddingTop:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px 10px"}}>
+            <AppIcon size={30}/>
+            <div>
+              <div style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{user.name.split(" ")[0]}</div>
+              <div style={{fontSize:10,color:"#94a3b8"}}>Cliente</div>
+            </div>
           </div>
-        </F>
-        <F d={0.06} scale={0.96}>
-          <img src={LOGO} alt="OneTouch Tax" style={{ width:200,height:"auto",borderRadius:24,marginBottom:40,boxShadow:"0 0 80px rgba(74,163,245,.22),0 0 200px rgba(16,85,184,.12)" }}/>
-        </F>
-        <F d={0.12}>
-          <h1 style={{ fontSize:"clamp(38px,6.5vw,78px)",fontWeight:900,letterSpacing:"-3px",lineHeight:1,marginBottom:22,maxWidth:820 }}>
-            Declare seu negócio{" "}
-            <span style={{ background:"linear-gradient(135deg,#bfdbfe 0%,#4aa3f5 40%,#1055b8 100%)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent" }}>
-              com confiança.
-            </span>
-          </h1>
-        </F>
-        <F d={0.17}>
-          <p style={{ color:"#64748b",fontSize:18,lineHeight:1.75,maxWidth:500,marginBottom:50 }}>
-            Importe o extrato bancário. O aplicativo classifica cada despesa com as regras do IRS — você valida em segundos.
-          </p>
-        </F>
-        <F d={0.22}>
-          <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:76 }}>
-            <button className="btn-primary">Começar 14 dias grátis →</button>
-            <button className="btn-ghost">Ver demonstração</button>
-          </div>
-        </F>
-        <F d={0.27}>
-          <div ref={statsRef} style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap" }}>
-            {[{val:c98,suf:"%",lbl:"Precisão"},{val:c6,suf:"",lbl:"Tipos de entidade"},{val:c14,suf:"",lbl:"Dias grátis"}].map(({val,suf,lbl},i)=>(
-              <div key={i} style={{ background:"#0a1a35",border:"1px solid #1e3a5f",borderRadius:16,padding:"20px 32px",textAlign:"center",minWidth:120 }}>
-                <div style={{ color:"#4aa3f5",fontWeight:900,fontSize:42,letterSpacing:"-1.5px",lineHeight:1,fontFamily:"'DM Mono',monospace" }}>{val}{suf}</div>
-                <div style={{ color:"#475569",fontSize:12,fontWeight:600,marginTop:5 }}>{lbl}</div>
-              </div>
-            ))}
-          </div>
-        </F>
-      </section>
-
-      {/* MARQUEE */}
-      <div style={{ background:"#050d1a",borderTop:"1px solid #0f2040",borderBottom:"1px solid #0f2040",padding:"16px 0" }}>
-        <p style={{ textAlign:"center",color:"#1e3a5f",fontWeight:700,fontSize:11,letterSpacing:"2px",textTransform:"uppercase",padding:"0 24px" }}>
-          Schedule C ◆ Form 1065 ◆ Form 1120-S ◆ Form 1120 ◆ Bank of America ◆ Chase ◆ Wells Fargo ◆ PDF · Excel · CSV ◆ QuickBooks ◆ IRS 2026 ◆ LLC · S-Corp · C-Corp
-        </p>
+          <button className="ntb" onClick={onLogout} style={{color:"#ef4444"}}>🚪 Sair</button>
+        </div>
       </div>
 
-      {/* HOW IT WORKS */}
-      <section id="como" style={{ background:"#f0f4f8",padding:"100px 24px" }}>
-        <div style={{ maxWidth:1000,margin:"0 auto" }}>
-          <F><p style={{ textAlign:"center",color:"#1055b8",fontWeight:800,fontSize:11,letterSpacing:"3px",textTransform:"uppercase",marginBottom:16 }}>Como funciona</p></F>
-          <F d={.06}><h2 style={{ textAlign:"center",color:"#0a2a5e",fontWeight:900,fontSize:"clamp(28px,4vw,50px)",letterSpacing:"-2px",lineHeight:1.05,marginBottom:16 }}>Um arquivo. Um toque.<br/>Tudo classificado.</h2></F>
-          <F d={.1}><p style={{ textAlign:"center",color:"#64748b",fontSize:16,margin:"0 auto 64px",maxWidth:520 }}>Três passos. O quarto é opcional — transforma o app em serviço contábil completo.</p></F>
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:20 }}>
-            {[
-              { n:"01",icon:"📂",col:"#dbeafe",tag:null,   title:"Importe",               desc:"Arraste o extrato (PDF, Excel ou CSV). Processado em segundos." },
-              { n:"02",icon:"📲",col:"#d1fae5",tag:null,   title:"Aplicativo Classifica", desc:"Regras IRS aplicadas por tipo de entidade, com referência de linha." },
-              { n:"03",icon:"✅",col:"#fef3c7",tag:null,   title:"Você Valida",           desc:"Revise e confirme. Guiado e simples — sem estudar o código fiscal." },
-              { n:"04*",icon:"🧮",col:"#ede9fe",tag:"Add-on",title:"CPA Assina",          desc:"Contador parceiro revisa e assina digitalmente o relatório IRS." },
-            ].map((s,i)=>(
-              <F key={i} d={i*.1}>
-                <div style={{ background:s.tag?"#faf5ff":"#fff",border:s.tag?"1.5px solid #e9d5ff":"1px solid #e2e8f0",borderRadius:20,padding:"36px 28px",transition:"transform .3s,box-shadow .3s",cursor:"default" }}
-                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-6px)";e.currentTarget.style.boxShadow="0 20px 50px rgba(0,0,0,.1)"}}
-                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                  <div style={{ color:s.col,fontWeight:900,fontSize:52,lineHeight:1,marginBottom:16 }}>{s.n}</div>
-                  <div style={{ fontSize:36,marginBottom:16 }}>{s.icon}</div>
-                  {s.tag&&<div style={{ color:"#7c3aed",fontWeight:800,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",marginBottom:6 }}>{s.tag}</div>}
-                  <h3 style={{ color:"#0f172a",fontWeight:800,fontSize:19,marginBottom:10 }}>{s.title}</h3>
-                  <p style={{ color:"#64748b",fontSize:14,lineHeight:1.65 }}>{s.desc}</p>
-                </div>
-              </F>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* EXPENSE MANAGEMENT */}
-      <section id="despesas" style={{ background:"#030d1c",padding:"100px 24px",position:"relative",overflow:"hidden" }}>
-        <div style={{ position:"absolute",top:"30%",right:"-10%",width:500,height:500,background:"radial-gradient(circle,rgba(74,163,245,.07) 0%,transparent 70%)",pointerEvents:"none" }}/>
-        <div style={{ maxWidth:1160,margin:"0 auto" }}>
-          <F><p style={{ textAlign:"center",color:"#4aa3f5",fontWeight:800,fontSize:11,letterSpacing:"3px",textTransform:"uppercase",marginBottom:16 }}>Gerenciamento de Despesas</p></F>
-          <F d={.06}><h2 style={{ textAlign:"center",color:"#f8fafc",fontWeight:900,fontSize:"clamp(28px,4vw,50px)",letterSpacing:"-2px",lineHeight:1.05,marginBottom:16 }}>Controle total de cada <span style={{ color:"#4aa3f5" }}>centavo.</span></h2></F>
-          <F d={.1}><p style={{ textAlign:"center",color:"#475569",fontSize:16,margin:"0 auto 72px",maxWidth:520 }}>Cada despesa classificada, cada linha do IRS mapeada. Sem planilhas, sem dor de cabeça.</p></F>
-
-          <F d={.08}>
-            <div style={{ background:"#071428",border:"1px solid #1e293b",borderRadius:24,overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,.5)" }}>
-              <div style={{ padding:"16px 24px",borderBottom:"1px solid #1e293b",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
-                <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-                  <img src={LOGO} alt="" style={{ height:28,borderRadius:6 }}/>
-                  <span style={{ color:"#f8fafc",fontWeight:700,fontSize:15 }}>Dashboard — Março 2026</span>
-                  <span style={{ background:"#0a2040",border:"1px solid #1e3a5f",borderRadius:20,padding:"3px 10px",fontSize:11,color:"#4aa3f5",fontWeight:700 }}>Schedule C</span>
-                </div>
-                <div style={{ display:"flex",gap:8 }}>
-                  <button className="tab active">Março</button>
-                  <button className="tab">T1 2026</button>
-                  <button className="tab">Anual</button>
+      <div style={{marginLeft:212,flex:1,padding:"28px 28px 48px"}}>
+        {tab==="home"&&(
+          <div>
+            <div style={{marginBottom:22}}>
+              <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>
+                Olá, {user.name.split(" ")[0]} 👋
+              </h1>
+              <p style={{color:"#64748b",fontSize:13,margin:0}}>{user.company} · {cfg.form}</p>
+            </div>
+            <div className="card" style={{marginBottom:18,borderTop:`3px solid ${BRAND.touchColor}`,background:"linear-gradient(135deg,#f0f9ff,#fff)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+                <span style={{fontSize:30}}>⚡</span>
+                <div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#0f172a",letterSpacing:"-0.5px"}}>One Touch — Importar agora</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>Solte seu extrato. O app classifica tudo.</div>
                 </div>
               </div>
+              <OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+              {[
+                {l:"Receita Total",v:`$${income.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:"#10b981",i:"📈"},
+                {l:"Deduções",     v:`$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:BRAND.touchColor,i:"📉"},
+                {l:"Transações",   v:txns.length,                                                      c:"#8b5cf6",i:"📋"},
+                {l:"Pendentes",    v:pending,                                                           c:"#f59e0b",i:"⏳"},
+              ].map((s,i)=>(
+                <div key={i} className="card" style={{borderTop:`3px solid ${s.c}`}}>
+                  <div style={{fontSize:24,marginBottom:6}}>{s.i}</div>
+                  <div style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div>
+                  <div style={{fontSize:12,color:"#94a3b8",marginTop:2,fontWeight:500}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-              <div style={{ padding:24,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16 }}>
-                {[{lbl:"Receita Bruta",val:"$8,990",delta:"+12%",c:"#10b981"},{lbl:"Despesas Dedut.",val:"$1,740",delta:"-8%",c:"#4aa3f5"},{lbl:"Não Dedutível",val:"$6,634",delta:"",c:"#8b5cf6"}].map((m,i)=>(
-                  <div key={i} style={{ background:"#0a1530",border:"1px solid #1e293b",borderRadius:14,padding:"18px 20px" }}>
-                    <div style={{ color:"#475569",fontSize:12,fontWeight:600,marginBottom:8 }}>{m.lbl}</div>
-                    <div style={{ color:"#f8fafc",fontWeight:900,fontSize:28,letterSpacing:"-1px",fontFamily:"'DM Mono',monospace" }}>{m.val}</div>
-                    {m.delta&&<div style={{ color:m.c,fontSize:12,fontWeight:700,marginTop:4 }}>{m.delta} vs fev</div>}
+        {tab==="import"&&(
+          <div>
+            <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Importar Extrato</h1>
+            <p style={{color:"#64748b",margin:"0 0 22px",fontSize:13}}>
+              Um arquivo. Um clique. Classificação imediata — regras <strong>{cfg.form}</strong>.
+            </p>
+            <OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType}/>
+            <div className="card" style={{marginTop:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:12}}>Formatos suportados</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                {[{icon:"📄",label:"PDF",desc:"Extratos Bank of America, Chase, Wells Fargo."},
+                  {icon:"📊",label:"Excel (.xlsx)",desc:"Colunas: Date, Description, Amount."},
+                  {icon:"📃",label:"CSV",desc:"Exportação QuickBooks ou banco."}].map(f=>(
+                  <div key={f.label} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:16}}>
+                    <div style={{fontSize:26,marginBottom:8}}>{f.icon}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:4}}>{f.label}</div>
+                    <div style={{fontSize:11,color:"#64748b",lineHeight:1.5}}>{f.desc}</div>
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
 
-              <div style={{ padding:"0 24px 24px",display:"grid",gridTemplateColumns:"1fr 340px",gap:20 }}>
-                <div ref={expRef}>
-                  <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8 }}>
-                    <span style={{ color:"#94a3b8",fontSize:13,fontWeight:700 }}>Transações · {TXNS.length} registros</span>
-                    <div style={{ display:"flex",gap:6 }}>
-                      {["all","deducible","income"].map(t=>(
-                        <button key={t} className={`tab${activeTab===t?" active":""}`} onClick={()=>setActiveTab(t)} style={{ fontSize:11,padding:"5px 12px" }}>
-                          {t==="all"?"Todas":t==="deducible"?"Dedutíveis":"Receitas"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ borderRadius:14,overflow:"hidden",border:"1px solid #1e293b" }}>
-                    <div style={{ display:"grid",gridTemplateColumns:"70px 1fr 90px 120px 80px 90px",background:"#0a1a35",padding:"10px 16px",gap:12 }}>
-                      {["Data","Descrição","Valor","Categoria","Linha IRS","Ação"].map(h=>(
-                        <div key={h} style={{ color:"#475569",fontSize:11,fontWeight:700,letterSpacing:".8px",textTransform:"uppercase" }}>{h}</div>
-                      ))}
-                    </div>
-                    {TXNS.map((t,i)=>{
-                      const show=activeTab==="all"||(activeTab==="deducible"&&t.p&&!t.amt.startsWith("+"))||(activeTab==="income"&&t.amt.startsWith("+"));
-                      if(!show) return null;
-                      const isVal=validated.includes(i), isValg=validating===i;
-                      return (
-                        <div key={i} style={{ display:"grid",gridTemplateColumns:"70px 1fr 90px 120px 80px 90px",padding:"12px 16px",gap:12,alignItems:"center",borderTop:"1px solid #0f2040",background:rowHover===i?"#0a1a35":"transparent",animation:expVis?`rowIn .4s ease ${i*.06}s both`:"none",transition:"background .15s",cursor:"default" }}
-                          onMouseEnter={()=>setRowHover(i)} onMouseLeave={()=>setRowHover(null)}>
-                          <div style={{ color:"#475569",fontSize:11,fontFamily:"'DM Mono',monospace" }}>{t.date}</div>
-                          <div style={{ color:"#e2e8f0",fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{t.desc}</div>
-                          <div style={{ color:t.amt.startsWith("+")?t.c:"#94a3b8",fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace" }}>{t.amt}</div>
-                          <span style={{ background:`${t.c}18`,border:`1px solid ${t.c}44`,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,color:t.c,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{t.cat}</span>
-                          <div style={{ color:"#f59e0b",fontSize:10,fontWeight:700,fontFamily:"'DM Mono',monospace" }}>{t.line}</div>
-                          <div>
-                            {isVal?(<span style={{ color:"#10b981",fontSize:11,fontWeight:700 }}>✓ Validado</span>)
-                            :isValg?(<span style={{ color:"#4aa3f5",fontSize:11,animation:"pulse 1s infinite" }}>…</span>)
-                            :(<button onClick={()=>handleValidate(i)} style={{ background:"#0f2040",border:"1px solid #1e3a5f",color:"#4aa3f5",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .2s" }}
-                                onMouseEnter={e=>{e.target.style.background="#1055b8";e.target.style.color="#fff"}}
-                                onMouseLeave={e=>{e.target.style.background="#0f2040";e.target.style.color="#4aa3f5"}}>Validar</button>)}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
-                  <div ref={chartRef} style={{ background:"#0a1530",border:"1px solid #1e293b",borderRadius:14,padding:"20px",flex:1 }}>
-                    <div style={{ color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:18 }}>Distribuição por Categoria</div>
-                    {CATS.map((c,i)=>(
-                      <div key={i} style={{ marginBottom:14 }}>
-                        <div style={{ display:"flex",justifyContent:"space-between",marginBottom:5 }}>
-                          <span style={{ color:"#94a3b8",fontSize:12,fontWeight:600 }}>{c.name}</span>
-                          <span style={{ color:c.color,fontSize:12,fontWeight:800,fontFamily:"'DM Mono',monospace" }}>{c.amt}</span>
-                        </div>
-                        <div style={{ background:"#0f2040",borderRadius:4,height:6,overflow:"hidden" }}>
-                          <div style={{ height:"100%",borderRadius:4,background:c.color,width:chartVis?`${c.pct}%`:"0%",transition:`width 1s cubic-bezier(.22,1,.36,1) ${.1+i*.12}s`,boxShadow:`0 0 8px ${c.color}66` }}/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ background:"#0a1530",border:"1px solid #1e293b",borderRadius:14,padding:"20px" }}>
-                    <div style={{ color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:14 }}>Score de Confiança</div>
-                    <div style={{ position:"relative",width:100,height:100,margin:"0 auto 14px" }}>
-                      <svg viewBox="0 0 100 100" style={{ transform:"rotate(-90deg)" }}>
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="#0f2040" strokeWidth="10"/>
-                        <circle cx="50" cy="50" r="40" fill="none" stroke="#10b981" strokeWidth="10"
-                          strokeDasharray="251.2" strokeDashoffset={chartVis?"25":"251.2"}
-                          style={{ transition:"stroke-dashoffset 1.4s cubic-bezier(.22,1,.36,1) .3s" }} strokeLinecap="round"/>
-                      </svg>
-                      <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center" }}>
-                        <div style={{ color:"#10b981",fontWeight:900,fontSize:22,fontFamily:"'DM Mono',monospace" }}>96%</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign:"center",color:"#475569",fontSize:12 }}>Média das classificações</div>
-                    <div style={{ marginTop:12,padding:"10px 14px",background:"#071428",borderRadius:10,display:"flex",alignItems:"center",gap:8 }}>
-                      <div style={{ width:6,height:6,borderRadius:"50%",background:"#f59e0b",animation:"pulse 2s infinite" }}/>
-                      <span style={{ color:"#f59e0b",fontSize:12,fontWeight:600 }}>2 itens precisam revisão</span>
-                    </div>
-                  </div>
-                </div>
+        {tab==="transactions"&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+              <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:0,letterSpacing:"-1px"}}>Transações</h1>
+              <button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",
+                padding:"9px 18px",borderRadius:10,border:"none",fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                + Importar
+              </button>
+            </div>
+            <div className="card" style={{padding:0,overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",
+                gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",
+                fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}>
+                <span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span>
+                <span>Classificação</span><span>Conf.</span><span>Status</span>
               </div>
-
-              <div style={{ padding:"14px 24px",borderTop:"1px solid #1e293b",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12 }}>
-                <div style={{ display:"flex",gap:20 }}>
-                  {[["✅","5 validadas"],["⏳","3 pendentes"],["📤","Exportar para QuickBooks"]].map(([ico,txt],i)=>(
-                    <span key={i} style={{ color:i===2?"#4aa3f5":"#475569",fontSize:13,fontWeight:600,cursor:i===2?"pointer":"default",display:"flex",alignItems:"center",gap:5 }}>{ico} {txt}</span>
-                  ))}
+              {txns.map(t=>(
+                <div key={t.id} style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 180px 80px 72px",
+                  gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc"}}>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span>
+                  <span style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</span>
+                  <span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>
+                    {t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                  </span>
+                  <CatBadge label={t.aiCategory||"—"} entityType={entityType}/>
+                  <ConfBar v={t.aiConfidence||0}/>
+                  <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",
+                    color:t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}}>
+                    {t.status==="approved"?"✓ Ok":t.status==="rejected"?"✗ Rev.":"⏳"}
+                  </span>
                 </div>
-                <button style={{ background:"#1055b8",color:"#fff",border:"none",borderRadius:10,padding:"8px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit" }}>Gerar Relatório IRS →</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==="settings"&&(
+          <div>
+            <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 22px",letterSpacing:"-1px"}}>Configurações</h1>
+            <div className="card" style={{marginBottom:16}}>
+              <h3 style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:14}}>🏢 Tipo de Empresa</h3>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                {Object.entries(ENTITY_CONFIGS).map(([key,c])=>(
+                  <div key={key} onClick={()=>setEntityType(key)}
+                    style={{padding:"14px 16px",borderRadius:12,cursor:"pointer",transition:"all .15s",
+                      border:`1.5px solid ${entityType===key?c.color:"#e2e8f0"}`,
+                      background:entityType===key?"#f8faff":"#fff"}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{c.label}</div>
+                      {entityType===key&&<span style={{fontSize:11,fontWeight:700,color:c.color}}>✓</span>}
+                    </div>
+                    <div style={{fontSize:11,color:c.color,fontWeight:600,marginTop:2}}>{c.form}</div>
+                  </div>
+                ))}
               </div>
             </div>
-          </F>
-
-          <div style={{ marginTop:48,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:16 }}>
-            {[{icon:"🏦",title:"Multi-banco",desc:"Bank of America, Chase, Wells Fargo. Importe de qualquer extrato, sem ajustes."},{icon:"📊",title:"Relatórios IRS",desc:"Cada transação mapeada para a linha exata do Schedule C, Form 1065 ou 1120-S."},{icon:"🔄",title:"Reconciliação",desc:"Compare extratos de múltiplos períodos e identifique duplicatas automaticamente."},{icon:"📤",title:"Export QuickBooks",desc:"Exporte em formato compatível com QuickBooks, Xero ou CSV para seu contador."}].map((f,i)=>(
-              <F key={i} d={i*.08}>
-                <div style={{ background:"#071428",border:"1px solid #1e293b",borderRadius:16,padding:"24px 22px",transition:"transform .3s,border-color .3s" }}
-                  onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.borderColor="#1e3a5f"}}
-                  onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.borderColor="#1e293b"}}>
-                  <div style={{ fontSize:28,marginBottom:12 }}>{f.icon}</div>
-                  <h4 style={{ color:"#f8fafc",fontWeight:800,fontSize:16,marginBottom:8 }}>{f.title}</h4>
-                  <p style={{ color:"#475569",fontSize:14,lineHeight:1.6 }}>{f.desc}</p>
+            <div className="card">
+              <h3 style={{fontSize:14,fontWeight:700,color:"#0f172a",marginBottom:12}}>👤 Perfil</h3>
+              {[["Nome",user.name],["E-mail",user.email],["Banco",user.bank],["Conta",user.account]].map(([k,v])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",
+                  borderBottom:"1px solid #f1f5f9",fontSize:13}}>
+                  <span style={{color:"#64748b"}}>{k}</span>
+                  <span style={{fontWeight:600,color:"#0f172a"}}>{v}</span>
                 </div>
-              </F>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRICING */}
-      <section id="planos" style={{ background:"#f0f4f8",padding:"100px 24px" }}>
-        <div style={{ maxWidth:1100,margin:"0 auto" }}>
-          <F><p style={{ textAlign:"center",color:"#1055b8",fontWeight:800,fontSize:11,letterSpacing:"3px",textTransform:"uppercase",marginBottom:16 }}>Planos & Preços</p></F>
-          <F d={.06}><h2 style={{ textAlign:"center",color:"#0a2a5e",fontWeight:900,fontSize:"clamp(28px,4vw,50px)",letterSpacing:"-2px",lineHeight:1.05,marginBottom:16 }}>Simples. <span style={{ color:"#1055b8" }}>Sem surpresas.</span></h2></F>
-          <F d={.1}><p style={{ textAlign:"center",color:"#64748b",fontSize:15,marginBottom:52 }}>Todos incluem gerenciamento de despesas e auto-validação. Contador disponível como add-on.</p></F>
-
-          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:16 }}>
-            {plans.map((p,i)=>(
-              <F key={i} d={i*.1}>
-                <div onMouseEnter={()=>setPlanHover(i)} onMouseLeave={()=>setPlanHover(null)}
-                  style={{ background:p.bg,border:p.border,borderRadius:22,padding:"36px 28px",display:"flex",flexDirection:"column",transform:planHover===i?"translateY(-8px)":"none",boxShadow:planHover===i?"0 24px 60px rgba(0,0,0,.25)":"none",transition:"transform .3s,box-shadow .3s" }}>
-                  {p.badge&&<div style={{ background:"#1055b8",color:"#fff",fontWeight:800,fontSize:9,letterSpacing:"1.5px",textTransform:"uppercase",display:"inline-block",padding:"4px 12px",borderRadius:20,marginBottom:14 }}>{p.badge}</div>}
-                  <div style={{ fontSize:28,marginBottom:12 }}>{p.icon}</div>
-                  <div style={{ color:p.accent,fontWeight:800,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",marginBottom:4 }}>{p.name} · {p.sub}</div>
-                  <div style={{ color:"#f8fafc",fontWeight:900,fontSize:44,letterSpacing:"-2px",lineHeight:1,marginTop:12,marginBottom:4,fontFamily:"'DM Mono',monospace" }}>
-                    {p.price}<span style={{ fontSize:22,color:"#64748b",fontWeight:400 }}>{p.cents}</span>
-                  </div>
-                  <div style={{ color:"#475569",fontSize:12,marginBottom:6 }}>por mês</div>
-                  <div style={{ color:p.accent,fontWeight:800,fontSize:16,marginBottom:4 }}>{p.vol}</div>
-                  <div style={{ color:"#334155",fontSize:12,marginBottom:20 }}>{p.desc}</div>
-                  <hr style={{ border:"none",borderTop:"1px solid #1e293b",marginBottom:20 }}/>
-                  <ul style={{ listStyle:"none",flex:1,display:"flex",flexDirection:"column",gap:9,marginBottom:28 }}>
-                    {p.features.map((f,j)=>(<li key={j} style={{ color:"#94a3b8",fontSize:13,display:"flex",gap:8,alignItems:"flex-start" }}><span style={{ color:p.accent,flexShrink:0,marginTop:1 }}>✓</span>{f}</li>))}
-                  </ul>
-                  <button style={{ width:"100%",background:p.ctaBg,color:p.ctaC,border:"none",borderRadius:12,padding:"14px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"opacity .2s" }}
-                    onMouseEnter={e=>e.target.style.opacity=".85"} onMouseLeave={e=>e.target.style.opacity="1"}>{p.cta}</button>
-                  <div style={{ textAlign:"center",color:"#334155",fontSize:11,marginTop:8 }}>14 dias grátis · sem cartão</div>
-                </div>
-              </F>
-            ))}
-          </div>
-
-          <F d={.15}>
-            <div style={{ background:"#030d1c",border:"2px solid #c8922a",borderRadius:22,padding:"36px 40px",display:"flex",flexWrap:"wrap",gap:36,justifyContent:"space-between",alignItems:"center" }}>
-              <div style={{ flex:1,minWidth:260 }}>
-                <div style={{ fontSize:32,marginBottom:10 }}>🧮</div>
-                <div style={{ color:"#c8922a",fontWeight:800,fontSize:10,letterSpacing:"2px",textTransform:"uppercase",marginBottom:8 }}>Add-on · Disponível para qualquer plano</div>
-                <h3 style={{ color:"#f8fafc",fontWeight:800,fontSize:22,marginBottom:10 }}>+ Acesso CPA / Contador</h3>
-                <p style={{ color:"#64748b",fontSize:14,lineHeight:1.65,marginBottom:14 }}>Você valida primeiro. O CPA parceiro revisa e assina digitalmente o relatório para o IRS filing.</p>
-                <ul style={{ listStyle:"none",display:"flex",flexDirection:"column",gap:8 }}>
-                  {["CPA revisa sua auto-validação","Assinatura digital de conformidade","Relatório assinado para IRS filing","1 revisão mensal completa incluída"].map((f,i)=>(
-                    <li key={i} style={{ color:"#94a3b8",fontSize:13,display:"flex",gap:8 }}><span style={{ color:"#c8922a" }}>✓</span>{f}</li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:10 }}>
-                <div style={{ color:"#c8922a",fontWeight:900,fontSize:48,letterSpacing:"-2px",fontFamily:"'DM Mono',monospace" }}>+$49<span style={{ fontSize:20,color:"#475569",fontWeight:400 }}>,90</span></div>
-                <div style={{ color:"#475569",fontSize:11 }}>por empresa / mês</div>
-                <button style={{ background:"#c8922a",color:"#0f172a",border:"none",borderRadius:12,padding:"13px 28px",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit" }}>Adicionar CPA →</button>
-              </div>
+              ))}
             </div>
-          </F>
-        </div>
-      </section>
-
-      {/* CTA FINAL */}
-      <section style={{ background:"linear-gradient(150deg,#030d1c 0%,#071840 50%,#0a2a5e 100%)",padding:"100px 24px",textAlign:"center",position:"relative",overflow:"hidden" }}>
-        <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:800,height:400,background:"radial-gradient(ellipse,rgba(74,163,245,.12) 0%,transparent 70%)",pointerEvents:"none" }}/>
-        <div style={{ position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(74,163,245,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(74,163,245,.03) 1px,transparent 1px)",backgroundSize:"60px 60px",pointerEvents:"none" }}/>
-        <F>
-          <img src={LOGO} alt="OneTouch Tax" style={{ width:140,height:"auto",borderRadius:20,marginBottom:32,boxShadow:"0 0 60px rgba(0,0,0,.5)" }}/>
-          <h2 style={{ color:"#fff",fontWeight:900,fontSize:"clamp(28px,5vw,54px)",letterSpacing:"-2.5px",lineHeight:1.0,marginBottom:20 }}>
-            Pronto para declarar <span style={{ color:"#c8922a" }}>sem drama?</span>
-          </h2>
-          <p style={{ color:"#64748b",fontSize:16,marginBottom:44 }}>14 dias grátis. Sem cartão. Cancele quando quiser.</p>
-          <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap" }}>
-            <button className="btn-primary" style={{ fontSize:16,padding:"18px 44px" }}>Começar 14 dias grátis →</button>
-            <button className="btn-ghost" style={{ color:"#64748b",borderColor:"#1e293b" }}>Ver demonstração</button>
           </div>
-          <p style={{ color:"rgba(74,163,245,.35)",fontSize:12,marginTop:44 }}>© 2026 OneTouch Tax · onetouchtax.com · IRS Compliant 2024–2026</p>
-        </F>
-      </section>
+        )}
+      </div>
     </div>
   );
+};
+
+const AccountantApp=({user,onLogout})=>{
+  const [entityType,setEntityType]=useState("smllc");
+  const [txns,setTxns]=useState(SAMPLE.map(t=>({...t,finalCategory:t.aiCategory})));
+  const [filter,setFilter]=useState("pending");
+  const [search,setSearch]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editCat,setEditCat]=useState("");
+  const cfg=ENTITY_CONFIGS[entityType];
+  const cats=CATEGORIES[entityType]||CATEGORIES.smllc;
+  const filtered=txns
+    .filter(t=>filter==="all"?true:t.status===filter)
+    .filter(t=>search?t.description.toLowerCase().includes(search.toLowerCase()):true);
+  const counts={all:txns.length,pending:txns.filter(t=>t.status==="pending").length,
+    approved:txns.filter(t=>t.status==="approved").length,rejected:txns.filter(t=>t.status==="rejected").length};
+  const approve=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"approved"}:t));
+  const reject=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"rejected"}:t));
+  const saveEdit=id=>{setTxns(p=>p.map(t=>t.id===id?{...t,finalCategory:editCat,aiCategory:editCat,status:"pending"}:t));setEditId(null);};
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;}
+        .fc{background:none;border:1px solid #e2e8f0;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;color:#64748b;}
+        .fc.a{background:${BRAND.arcOuter};border-color:${BRAND.arcOuter};color:#fff;}
+        .fc:hover:not(.a){border-color:${BRAND.touchColor};color:${BRAND.touchColor};}
+        .ab{border:none;padding:6px 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;}
+        .gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}
+        .rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}
+        .bl{background:#f0f9ff;color:${BRAND.touchColor};}.bl:hover{background:#e0f2fe;}
+        select.cs{border:1.5px solid ${BRAND.touchColor};border-radius:8px;padding:4px 9px;font-family:inherit;font-size:11px;color:#0f172a;background:#fff;outline:none;}
+        .si{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:8px 13px;border-radius:9px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;width:240px;}
+        .si:focus{border-color:${BRAND.touchColor};}
+      `}</style>
+
+      <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,
+        display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",
+        position:"sticky",top:0,zIndex:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:16}}>
+          <NavLogo dark={false}/>
+          <span style={{color:"#94a3b8",fontSize:13}}>/ Contador</span>
+          <select value={entityType} onChange={e=>setEntityType(e.target.value)}
+            style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#334155",
+              padding:"5px 10px",borderRadius:8,fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}>
+            {Object.entries(ENTITY_CONFIGS).map(([k,c])=>(
+              <option key={k} value={k}>{c.label} · {c.form}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:13,color:"#64748b"}}>{user.name}</span>
+          <button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",
+            padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>
+            Sair
+          </button>
+        </div>
+      </div>
+
+      <div style={{padding:"24px 24px 48px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <div>
+            <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:22,fontWeight:800,color:"#0f172a",margin:"0 0 3px",letterSpacing:"-0.8px"}}>
+              Validação de Transações
+            </h1>
+            <div style={{fontSize:12,color:"#64748b"}}>{cfg.label} · {cfg.form} · Clique na categoria para editar</div>
+          </div>
+          {counts.pending>0&&(
+            <button className="ab gn" onClick={()=>setTxns(p=>p.map(t=>t.status==="pending"?{...t,status:"approved"}:t))}
+              style={{padding:"9px 18px",fontSize:13,border:"none"}}>
+              ✓ Aprovar todas ({counts.pending})
+            </button>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:10,marginBottom:18}}>
+          {[["all","Total","#334155"],["pending","Pendentes","#f59e0b"],["approved","Aprovadas","#10b981"],["rejected","Revisão","#ef4444"]].map(([k,l,c])=>(
+            <div key={k} onClick={()=>setFilter(k)}
+              style={{background:"#fff",border:`1.5px solid ${filter===k?c:"#e2e8f0"}`,borderRadius:12,
+                padding:"10px 18px",cursor:"pointer",transition:"all .15s",
+                boxShadow:filter===k?`0 2px 12px ${c}20`:"none"}}>
+              <div style={{fontFamily:"'Manrope',system-ui",fontSize:22,fontWeight:800,color:c,letterSpacing:"-1px"}}>{counts[k]}</div>
+              <div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",
+            display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+            <input className="si" placeholder="🔍  Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <div style={{display:"flex",gap:6}}>
+              {[["all","Todas"],["pending","Pendentes"],["approved","Aprovadas"],["rejected","Revisão"]].map(([k,l])=>(
+                <button key={k} className={`fc ${filter===k?"a":""}`} onClick={()=>setFilter(k)}>{l} ({counts[k]})</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"85px 1fr 108px 195px 80px 110px",
+            gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",
+            fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}>
+            <span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span>
+            <span>Classificação</span><span>Conf.</span><span style={{textAlign:"center"}}>Ações</span>
+          </div>
+          {filtered.length===0&&(
+            <div style={{padding:48,textAlign:"center",color:"#94a3b8"}}>
+              <div style={{fontSize:36,marginBottom:8}}>🎉</div>
+              <div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>Tudo validado!</div>
+            </div>
+          )}
+          {filtered.map(t=>{
+            const isEd=editId===t.id;
+            const type=getCatType(t.finalCategory||t.aiCategory,entityType);
+            const tm=TYPE_META[type];
+            const rowBg=t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff";
+            return(
+              <div key={t.id} style={{display:"grid",gridTemplateColumns:"85px 1fr 108px 195px 80px 110px",
+                gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc",background:rowBg}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span>
+                <div>
+                  <div style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</div>
+                  {t.aiNote&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>ℹ {t.aiNote}</div>}
+                </div>
+                <span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>
+                  {t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}
+                </span>
+                <div>
+                  {isEd?(
+                    <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                      <select className="cs" value={editCat} onChange={e=>setEditCat(e.target.value)}>
+                        <optgroup label="📈 Receitas">{cats.income.map(c=><option key={c} value={c}>{c}</option>)}</optgroup>
+                        <optgroup label="💼 Deduções">{cats.expenses.map(c=><option key={c} value={c}>{c}</option>)}</optgroup>
+                        <optgroup label="⛔ Não Dedutíveis">{cats.nonDeduc.map(c=><option key={c} value={c}>{c}</option>)}</optgroup>
+                      </select>
+                      <button className="ab gn" onClick={()=>saveEdit(t.id)} style={{border:"none"}}>✓</button>
+                      <button className="ab rd" onClick={()=>setEditId(null)} style={{border:"none"}}>✕</button>
+                    </div>
+                  ):(
+                    <span style={{background:tm.bg,color:tm.text,fontSize:10,fontWeight:700,padding:"3px 9px",
+                      borderRadius:18,cursor:"pointer",display:"inline-block",maxWidth:185,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}
+                      onClick={()=>{setEditId(t.id);setEditCat(t.finalCategory||t.aiCategory);}}>
+                      {t.finalCategory||t.aiCategory}
+                    </span>
+                  )}
+                </div>
+                <ConfBar v={t.aiConfidence||0}/>
+                <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                  {t.status!=="approved"&&<button className="ab gn" onClick={()=>approve(t.id)} style={{border:"none"}}>✓</button>}
+                  {t.status!=="rejected"&&<button className="ab rd" onClick={()=>reject(t.id)} style={{border:"none"}}>✕</button>}
+                  {!isEd&&<button className="ab bl" onClick={()=>{setEditId(t.id);setEditCat(t.finalCategory||t.aiCategory);}} style={{border:"none"}}>✎</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{marginTop:10,fontSize:11,color:"#94a3b8",display:"flex",gap:20}}>
+          <span>🟢 &gt;85%</span><span>🟡 60–85%</span><span>🔴 &lt;60% revisar</span>
+          <span>💡 Clique na categoria para editar</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Login=({onLogin})=>{
+  const [email,setEmail]=useState(""), [pass,setPass]=useState(""), [err,setErr]=useState(""), [loading,setLoading]=useState(false);
+  const go=()=>{
+    setLoading(true);
+    setTimeout(()=>{
+      const u=USERS.find(u=>u.email===email&&u.password===pass);
+      u?onLogin(u):(setErr("Credenciais inválidas"),setLoading(false));
+    },500);
+  };
+  return(
+    <div style={{minHeight:"100vh",background:"#f0f7ff",display:"flex",alignItems:"center",
+      justifyContent:"center",fontFamily:"'Manrope',system-ui"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');
+        *{box-sizing:border-box;}
+        .li{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:12px 15px;border-radius:10px;
+          font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}
+        .li:focus{border-color:${BRAND.touchColor};}
+        .db{background:#f8fafc;border:1px solid #e2e8f0;color:#475569;padding:9px 14px;border-radius:9px;
+          font-size:12px;cursor:pointer;font-family:inherit;transition:all .2s;width:100%;text-align:left;}
+        .db:hover{border-color:${BRAND.touchColor};color:${BRAND.touchColor};}
+      `}</style>
+      <div style={{width:400,padding:44,background:"#fff",borderRadius:24,
+        border:"1px solid #e2e8f0",boxShadow:`0 24px 64px ${BRAND.touchColor}14`}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:4}}>
+            <Logo scale={0.36} dark={false}/>
+          </div>
+          <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Classificação Fiscal · IRS Compliant 2024</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <input className="li" placeholder="E-mail" type="email" value={email}
+            onChange={e=>{setEmail(e.target.value);setErr("");}}/>
+          <input className="li" placeholder="Senha" type="password" value={pass}
+            onChange={e=>{setPass(e.target.value);setErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&go()}/>
+          {err&&<div style={{color:"#ef4444",fontSize:12,textAlign:"center"}}>{err}</div>}
+          <button onClick={go} disabled={loading} style={{background:BRAND.gradient,color:"#fff",
+            padding:13,borderRadius:10,border:"none",fontFamily:"inherit",fontSize:15,
+            fontWeight:700,cursor:"pointer",marginTop:4}}>
+            {loading?"Entrando...":"→ Entrar"}
+          </button>
+        </div>
+        <div style={{marginTop:22,borderTop:"1px solid #f1f5f9",paddingTop:18}}>
+          <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Demo</div>
+          <div style={{display:"flex",flexDirection:"column",gap:7}}>
+            <button className="db" onClick={()=>{setEmail("marcelo@onetouchtax.com");setPass("ott2025");}}>
+              👤 Cliente — marcelo@onetouchtax.com / ott2025
+            </button>
+            <button className="db" onClick={()=>{setEmail("cpa@onetouchtax.com");setPass("cpa2025");}}>
+              🧮 Contador — cpa@onetouchtax.com / cpa2025
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [user,setUser]=useState(null);
+  if(!user) return <Login onLogin={setUser}/>;
+  if(user.role==="accountant") return <AccountantApp user={user} onLogout={()=>setUser(null)}/>;
+  return <ClientApp user={user} onLogout={()=>setUser(null)}/>;
 }
