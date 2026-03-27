@@ -5,6 +5,9 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
          createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 
+// ── Version ───────────────────────────────────────────────────────────────
+const APP_VERSION = "v1.0.3";
+
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDXUQtI8Mz8IghJZXzjzz5muBhqaHAL7ps",
   authDomain: "onetouchtax-a3c84.firebaseapp.com",
@@ -96,6 +99,15 @@ const AppIcon = ({ size=32 }) => (
   </div>
 );
 
+// Version badge component
+const VersionBadge = ({ style={} }) => (
+  <div style={{textAlign:"center",padding:"6px 0",...style}}>
+    <span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,fontFamily:"'Manrope',system-ui"}}>
+      {APP_VERSION}
+    </span>
+  </div>
+);
+
 const ENTITY_CONFIGS = {
   smllc:       { label:"LLC Membro Único",    form:"Schedule C",  color:BRAND.touchColor },
   mmllc:       { label:"LLC Multi-Membros",   form:"Form 1065",   color:"#8b5cf6" },
@@ -153,9 +165,7 @@ const TYPE_META = {
 };
 
 function parseBankText(text) {
-  const txns = [];
-  const lines = text.split(/\n|\r\n/);
-  const seen = new Set();
+  const txns = [], lines = text.split(/\n|\r\n/), seen = new Set();
   const patterns = [
     /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.{3,80?}?)\s+([-–]?\$?[\d,]+\.\d{2})(?:\s|$)/,
     /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([-–]?\$?[\d,]+\.\d{2})$/,
@@ -164,49 +174,35 @@ function parseBankText(text) {
     /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([-–]?\$?[\d,]+\.\d{2})\s+([-–]?\$?[\d,]+\.\d{2})/,
   ];
   for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i].trim().replace(/\s{2,}/g, " ");
+    const raw = lines[i].trim().replace(/\s{2,}/g," ");
     if (raw.length < 8) continue;
     let matched = false;
     for (const pat of patterns) {
       const m = pat.exec(raw);
       if (!m) continue;
-      const dateStr = m[1];
-      let desc = (m[2] || "").trim().replace(/\s+/g, " ");
-      const rawAmt = (m[3] || "").replace(/[$,\s]/g, "").replace("–", "-");
+      const dateStr = m[1], desc = (m[2]||"").trim().replace(/\s+/g," ");
+      const rawAmt = (m[3]||"").replace(/[$,\s]/g,"").replace("–","-");
       const amt = parseFloat(rawAmt);
-      if (!desc || isNaN(amt) || Math.abs(amt) < 0.01) continue;
+      if (!desc||isNaN(amt)||Math.abs(amt)<0.01) continue;
       if (/^(date|description|balance|amount|total|beginning|ending|transaction)/i.test(desc)) continue;
       const key = `${dateStr}|${desc}|${amt}`;
       if (seen.has(key)) continue;
       seen.add(key);
       let date = dateStr;
       const parts = dateStr.split("/");
-      if (parts.length === 3 && parts[2].length === 2) {
-        const yr = parseInt(parts[2]);
-        date = `${parts[0]}/${parts[1]}/${yr < 50 ? 2000 + yr : 1900 + yr}`;
-      } else if (parts.length === 2) {
-        date = `${parts[0]}/${parts[1]}/${new Date().getFullYear()}`;
-      }
-      txns.push({ id: `p${i}-${Math.random().toString(36).slice(2)}`, date, description: desc, amount: amt, aiCategory: null, status: "unclassified" });
-      matched = true; break;
+      if (parts.length===3&&parts[2].length===2) { const yr=parseInt(parts[2]); date=`${parts[0]}/${parts[1]}/${yr<50?2000+yr:1900+yr}`; }
+      else if (parts.length===2) { date=`${parts[0]}/${parts[1]}/${new Date().getFullYear()}`; }
+      txns.push({id:`p${i}-${Math.random().toString(36).slice(2)}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});
+      matched=true; break;
     }
     if (!matched) {
-      const looseDate = /(\d{1,2}\/\d{1,2}\/\d{2,4})/.exec(raw);
-      const looseAmt  = /([-–]?\$?[\d,]{1,10}\.\d{2})(?:\s|$)/.exec(raw);
-      if (looseDate && looseAmt) {
-        const rawAmt = looseAmt[1].replace(/[$,\s]/g, "").replace("–", "-");
-        const amt = parseFloat(rawAmt);
-        if (!isNaN(amt) && Math.abs(amt) > 0.01) {
-          const afterDate = raw.slice(looseDate.index + looseDate[0].length).trim();
-          const beforeAmt = afterDate.slice(0, afterDate.lastIndexOf(looseAmt[1])).trim();
-          const desc = (beforeAmt || afterDate.slice(0, 60)).replace(/\s+/g, " ").trim();
-          if (desc.length > 2) {
-            const key = `${looseDate[1]}|${desc}|${amt}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              txns.push({ id: `p${i}-${Math.random().toString(36).slice(2)}`, date: looseDate[1], description: desc, amount: amt, aiCategory: null, status: "unclassified" });
-            }
-          }
+      const ld=/((\d{1,2}\/\d{1,2}\/\d{2,4}))/.exec(raw), la=/([-–]?\$?[\d,]{1,10}\.\d{2})(?:\s|$)/.exec(raw);
+      if (ld&&la) {
+        const amt=parseFloat(la[1].replace(/[$,\s]/g,"").replace("–","-"));
+        if (!isNaN(amt)&&Math.abs(amt)>0.01) {
+          const after=raw.slice(ld.index+ld[0].length).trim();
+          const desc=(after.slice(0,after.lastIndexOf(la[1])).trim()||after.slice(0,60)).replace(/\s+/g," ").trim();
+          if (desc.length>2) { const key=`${ld[1]}|${desc}|${amt}`; if(!seen.has(key)){seen.add(key);txns.push({id:`p${i}-${Math.random().toString(36).slice(2)}`,date:ld[1],description:desc,amount:amt,aiCategory:null,status:"unclassified"});} }
         }
       }
     }
@@ -231,12 +227,12 @@ async function parsePDF(file) {
             if (!byY[y]) byY[y] = [];
             byY[y].push({ x: item.transform[4], str: item.str });
           }
-          for (const y of Object.keys(byY).map(Number).sort((a, b) => b - a)) {
-            fullText += byY[y].sort((a, b) => a.x - b.x).map(r => r.str).join(" ") + "\n";
+          for (const y of Object.keys(byY).map(Number).sort((a,b)=>b-a)) {
+            fullText += byY[y].sort((a,b)=>a.x-b.x).map(r=>r.str).join(" ") + "\n";
           }
         }
         resolve(parseBankText(fullText));
-      } catch (e) { console.error("PDF parse error:", e); resolve([]); }
+      } catch(e) { console.error("PDF parse error:",e); resolve([]); }
     };
     reader.readAsArrayBuffer(file);
   });
@@ -247,17 +243,16 @@ async function parseSpreadsheet(file) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, { type: "binary" });
+        const wb = XLSX.read(e.target.result,{type:"binary"});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+        const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
         const txns = [];
-        rows.forEach((row, i) => {
-          if (i === 0) return;
-          const date = String(row[0] || "").trim(), desc = String(row[1] || "").trim();
-          const raw = String(row[2] || row[3] || "").replace(/[$,\s]/g, "");
-          const amt = parseFloat(raw);
-          if (date && desc && !isNaN(amt))
-            txns.push({ id: `x${i}-${Math.random()}`, date, description: desc, amount: amt, aiCategory: null, status: "unclassified" });
+        rows.forEach((row,i) => {
+          if (i===0) return;
+          const date=String(row[0]||"").trim(), desc=String(row[1]||"").trim();
+          const raw=String(row[2]||row[3]||"").replace(/[$,\s]/g,"");
+          const amt=parseFloat(raw);
+          if (date&&desc&&!isNaN(amt)) txns.push({id:`x${i}-${Math.random()}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});
         });
         resolve(txns);
       } catch { resolve([]); }
@@ -275,7 +270,6 @@ const ENTITY_RULES = {
   sole_prop:`SCHEDULE C: Same as SMLLC. Owner draws→Owner's Draw (NOT deductible).`,
 };
 
-// ✅ Chama /api/classify — proxy seguro no servidor Vercel (API key em variável de ambiente)
 async function classifyBatch(batch, entityType) {
   const cfg = ENTITY_CONFIGS[entityType];
   const cats = CATEGORIES[entityType] || CATEGORIES.smllc;
@@ -285,20 +279,19 @@ async function classifyBatch(batch, entityType) {
     const res = await fetch("/api/classify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
     });
     const data = await res.json();
-    const text = data.content?.[0]?.text || "[]";
-    return JSON.parse(text.replace(/```json|```/g, "").trim());
-  } catch (e) { console.error("classifyBatch error:", e); return []; }
+    return JSON.parse((data.content?.[0]?.text||"[]").replace(/```json|```/g,"").trim());
+  } catch(e) { console.error("classifyBatch error:",e); return []; }
 }
 
 function exportPDF(txns, entityType, userName, company) {
   const cfg = ENTITY_CONFIGS[entityType] || ENTITY_CONFIGS.smllc;
-  const income = txns.filter(t => getCatType(t.aiCategory, entityType) === "income" && t.amount > 0).reduce((s, t) => s + t.amount, 0);
-  const expense = txns.filter(t => getCatType(t.aiCategory, entityType) === "expense").reduce((s, t) => s + Math.abs(t.amount), 0);
+  const income = txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const expense = txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
   const date = new Date().toLocaleDateString("en-US");
-  const rows = txns.map(t => `
+  const rows = txns.map(t=>`
     <tr style="border-bottom:1px solid #e2e8f0">
       <td style="padding:6px 8px;font-size:11px;color:#64748b">${t.date}</td>
       <td style="padding:6px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description}</td>
@@ -306,7 +299,7 @@ function exportPDF(txns, entityType, userName, company) {
       <td style="padding:6px 8px;font-size:11px">${t.aiCategory||"—"}</td>
       <td style="padding:6px 8px;font-size:11px;text-align:center;color:${t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}">${t.status==="approved"?"✓ Approved":t.status==="rejected"?"✗ Rejected":"Pending"}</td>
     </tr>`).join("");
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OneTouch Tax Report</title>
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OneTouch Tax Report</title>
   <style>body{font-family:'Arial',sans-serif;margin:0;padding:32px;color:#0f172a;background:#fff}
   table{width:100%;border-collapse:collapse;margin-top:20px}
   th{background:#0a2a5e;color:#fff;padding:8px;font-size:11px;text-align:left}
@@ -317,7 +310,7 @@ function exportPDF(txns, entityType, userName, company) {
   @media print{body{padding:16px}}</style></head><body>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0a2a5e;padding-bottom:16px;margin-bottom:20px">
     <div><h1 style="font-size:22px;margin:0">OneTouch Tax — Transaction Report</h1><p style="color:#64748b;font-size:12px;margin:4px 0 0">${company} · ${cfg.label} (${cfg.form})</p></div>
-    <div style="text-align:right;font-size:12px;color:#64748b"><div>${userName}</div><div>Generated: ${date}</div></div>
+    <div style="text-align:right;font-size:12px;color:#64748b"><div>${userName}</div><div>Generated: ${date}</div><div style="margin-top:2px;font-size:10px;color:#cbd5e1">OneTouch Tax ${APP_VERSION}</div></div>
   </div>
   <div class="summary">
     <div class="box"><div class="box-label">Gross Receipts</div><div class="box-val" style="color:#10b981">$${income.toLocaleString("en-US",{minimumFractionDigits:2})}</div></div>
@@ -328,23 +321,23 @@ function exportPDF(txns, entityType, userName, company) {
   <table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>IRS Category</th><th>Status</th></tr></thead>
   <tbody>${rows}</tbody></table>
   <div style="margin-top:24px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px">
-    OneTouch Tax · IRS Compliant · This report is for informational purposes only. Consult a qualified CPA before filing.
+    OneTouch Tax ${APP_VERSION} · IRS Compliant · This report is for informational purposes only. Consult a qualified CPA before filing.
   </div>
   <script>window.onload=()=>window.print()</script></body></html>`;
-  const w = window.open("", "_blank"); if (w) { w.document.write(html); w.document.close(); }
+  const w=window.open("","_blank"); if(w){w.document.write(html);w.document.close();}
 }
 
 function exportQBO(txns, entityType, company) {
-  const lines = ["!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!ENDTRNS"];
-  txns.forEach((t, i) => {
-    const acct = t.aiCategory || "Uncategorized", memo = t.description.replace(/\t/g, " "), amt = t.amount.toFixed(2);
+  const lines=["!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!ENDTRNS"];
+  txns.forEach((t,i)=>{
+    const acct=t.aiCategory||"Uncategorized", memo=t.description.replace(/\t/g," "), amt=t.amount.toFixed(2);
     lines.push(`TRNS\t${i+1}\tGENERAL JOURNAL\t${t.date}\t${acct}\t${company}\t${amt}\t${memo}`);
     lines.push(`SPL\t${i+1}\tGENERAL JOURNAL\t${t.date}\tChecking\t${company}\t${(-t.amount).toFixed(2)}\t${memo}`);
     lines.push("ENDTRNS");
   });
-  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-  const url = URL.createObjectURL(blob), a = document.createElement("a");
-  a.href = url; a.download = `onetouchtax_${new Date().toISOString().slice(0,10)}.iif`; a.click();
+  const blob=new Blob([lines.join("\n")],{type:"text/plain"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=`onetouchtax_${new Date().toISOString().slice(0,10)}.iif`;a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -483,6 +476,7 @@ const ClientApp=({user,onLogout})=>{
   return(
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui",display:"flex"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.ntb{background:none;border:none;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;transition:all .15s;color:#64748b;width:100%;}.ntb.a{background:#f0f9ff;color:${BRAND.touchColor};font-weight:700;}.ntb:hover:not(.a){background:#f1f5f9;color:#334155;}.card{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:22px;}.ab{border:none;padding:5px 11px;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:3px;}.gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}.rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}`}</style>
+      {/* Sidebar */}
       <div style={{width:212,background:"#fff",borderRight:"1px solid #e2e8f0",padding:"20px 12px",display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
         <div style={{display:"flex",justifyContent:"center",marginBottom:20}}><NavLogo dark={false}/></div>
         <div style={{background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:9,padding:"7px 10px",marginBottom:16}}>
@@ -495,8 +489,11 @@ const ClientApp=({user,onLogout})=>{
         <div style={{borderTop:"1px solid #f1f5f9",paddingTop:12}}>
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px 10px"}}><AppIcon size={30}/><div><div style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{user.name?.split(" ")[0]}</div><div style={{fontSize:10,color:"#94a3b8"}}>Cliente</div></div></div>
           <button className="ntb" onClick={onLogout} style={{color:"#ef4444"}}>🚪 Sair</button>
+          <VersionBadge/>
         </div>
       </div>
+
+      {/* Main */}
       <div style={{marginLeft:212,flex:1,padding:"28px 28px 48px"}}>
         {tab==="home"&&<div>
           <div style={{marginBottom:22}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Olá, {user.name?.split(" ")[0]} 👋</h1><p style={{color:"#64748b",fontSize:13,margin:0}}>{user.company} · {cfg.form}</p></div>
@@ -612,7 +609,11 @@ const AccountantApp=({user,onLogout})=>{
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.fc{background:none;border:1px solid #e2e8f0;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;color:#64748b;}.fc.a{background:${BRAND.arcOuter};border-color:${BRAND.arcOuter};color:#fff;}.fc:hover:not(.a){border-color:${BRAND.touchColor};color:${BRAND.touchColor};}.ab{border:none;padding:6px 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;}.gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}.rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}.bl{background:#f0f9ff;color:${BRAND.touchColor};}.bl:hover{background:#e0f2fe;}select.cs{border:1.5px solid ${BRAND.touchColor};border-radius:8px;padding:4px 9px;font-family:inherit;font-size:11px;color:#0f172a;background:#fff;outline:none;}.si{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:8px 13px;border-radius:9px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;width:240px;}.si:focus{border-color:${BRAND.touchColor};}`}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:16}}><NavLogo dark={false}/><span style={{color:"#94a3b8",fontSize:13}}>/ Contador</span><select value={entityType} onChange={e=>setEntityType(e.target.value)} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#334155",padding:"5px 10px",borderRadius:8,fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}>{Object.entries(ENTITY_CONFIGS).map(([k,c])=><option key={k} value={k}>{c.label} · {c.form}</option>)}</select></div>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:13,color:"#64748b"}}>{user.name}</span><button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Sair</button></div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:9,fontWeight:700,color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,letterSpacing:"1px"}}>{APP_VERSION}</span>
+          <span style={{fontSize:13,color:"#64748b"}}>{user.name}</span>
+          <button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Sair</button>
+        </div>
       </div>
       <div style={{padding:"24px 24px 48px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
@@ -675,7 +676,11 @@ const AdminPanel=({user,onLogout})=>{
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:10px 13px;border-radius:10px;font-size:13px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp:focus{border-color:${BRAND.touchColor};}.sel{background:#f8fafc;border:1px solid #e2e8f0;color:#334155;border-radius:9px;font-family:inherit;font-size:13px;outline:none;cursor:pointer;width:100%;padding:10px 13px;}`}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}><NavLogo dark={false}/><span style={{background:"#7c3aed",color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,letterSpacing:1}}>ADMIN</span></div>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:13,color:"#64748b"}}>{user.name}</span><button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Sair</button></div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <span style={{fontSize:9,fontWeight:700,color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,letterSpacing:"1px"}}>{APP_VERSION}</span>
+          <span style={{fontSize:13,color:"#64748b"}}>{user.name}</span>
+          <button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Sair</button>
+        </div>
       </div>
       <div style={{padding:"28px 28px 60px",maxWidth:1000,margin:"0 auto"}}>
         <div style={{marginBottom:24}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Gerenciar Usuários</h1><p style={{color:"#64748b",fontSize:13,margin:0}}>Crie e gerencie clientes e contadores do OneTouch Tax.</p></div>
@@ -736,6 +741,10 @@ const Login=()=>{
         <div style={{textAlign:"center",marginBottom:36}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:4}}><Logo scale={0.36} dark={false}/></div>
           <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Classificação Fiscal · IRS Compliant 2025</div>
+          {/* Version badge on login */}
+          <div style={{marginTop:8}}>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f8fafc",border:"1px solid #e2e8f0",padding:"2px 10px",borderRadius:20}}>{APP_VERSION}</span>
+          </div>
         </div>
         {resetSent?(<div style={{textAlign:"center",padding:"20px 0"}}><div style={{fontSize:40,marginBottom:12}}>📧</div><div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginBottom:8}}>E-mail enviado!</div><div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Verifique sua caixa de entrada.</div><button onClick={()=>setResetSent(false)} style={{background:"none",border:"none",color:BRAND.touchColor,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Voltar ao login</button></div>)
           :(<div style={{display:"flex",flexDirection:"column",gap:14}}>
