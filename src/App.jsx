@@ -5,7 +5,6 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
          createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 
-// ── Firebase ──────────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDXUQtI8Mz8IghJZXzjzz5muBhqaHAL7ps",
   authDomain: "onetouchtax-a3c84.firebaseapp.com",
@@ -18,7 +17,6 @@ const firebaseApp = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG)
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
-// ── Brand ─────────────────────────────────────────────────────────────────
 const BRAND = {
   arcOuter:"#0a2a5e", arcMid1:"#0e3d8a", arcMid2:"#1055b8",
   arcMid3:"#1a6fd4",  arcInner:"#2b89ee", arcCore:"#4aa3f5",
@@ -98,7 +96,6 @@ const AppIcon = ({ size=32 }) => (
   </div>
 );
 
-// ── Entity configs ────────────────────────────────────────────────────────
 const ENTITY_CONFIGS = {
   smllc:       { label:"LLC Membro Único",    form:"Schedule C",  color:BRAND.touchColor },
   mmllc:       { label:"LLC Multi-Membros",   form:"Form 1065",   color:"#8b5cf6" },
@@ -155,7 +152,6 @@ const TYPE_META = {
   other:   {bg:"#f8fafc",text:"#475569",dot:"#94a3b8"},
 };
 
-// ── File parsing ──────────────────────────────────────────────────────────
 function parseBankText(text) {
   const txns=[], lines=text.split("\n");
   const re=/(\d{2}\/\d{2}\/\d{2,4})\s+(.{5,80}?)\s+([-–]?[\d,]{1,10}\.\d{2})(?:\s|$)/;
@@ -203,7 +199,6 @@ async function parseSpreadsheet(file) {
   });
 }
 
-// ── AI Classification ─────────────────────────────────────────────────────
 const ENTITY_RULES = {
   smllc:`SCHEDULE C: Business payments received→Gross Receipts. Insurance premiums→Insurance (Business). Internet/cable/electricity/phone→Utilities. Employee payroll→Wages (W-2 Employees). Fuel/gas stations→Car & Truck — Gasoline. Vehicle repairs→Car & Truck — Repairs. Owner withdrawals→Owner's Draw (NOT deductible). Loan interest→Interest — Other. State/county taxes and fees→Taxes & Licenses. Contractor payments→Contract Labor (1099-NEC). Attorney/accountant fees→Legal & Professional Services. Personal grocery/clothing→Personal (Non-Deductible). Bank-to-bank transfers→Transfer. Business meals→Meals (50% deductible).`,
   scorp:`FORM 1120-S: Owner-employee salary→Compensation of Officers (REQUIRED). Shareholder distributions→Shareholder Distributions (NOT deductible). Employees W-2→Salaries & Wages.`,
@@ -225,7 +220,6 @@ async function classifyBatch(batch, entityType) {
   }catch{return[];}
 }
 
-// ── Sample data ───────────────────────────────────────────────────────────
 const SAMPLE=[
   {id:"s1",date:"03/14/2025",description:"SUNRISE TRADING LLC - Payment",        amount:4800.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue — Sch-C L.1",      status:"pending"},
   {id:"s2",date:"03/07/2025",description:"BLUE HORIZON SERVICES - Invoice #112", amount:1250.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.96,aiNote:"Business revenue",                   status:"pending"},
@@ -241,7 +235,6 @@ const SAMPLE=[
   {id:"s12",date:"03/25/2025",description:"METRO INSURANCE GROUP - Monthly",     amount:-320.00, aiCategory:"Insurance (Business)",     aiConfidence:.94,aiNote:"Sch-C L.15 — business insurance",   status:"approved"},
 ];
 
-// ── Small components ──────────────────────────────────────────────────────
 const ConfBar=({v=0})=>{
   const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";
   return(<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/></div><span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span></div>);
@@ -251,7 +244,6 @@ const CatBadge=({label,entityType})=>{
   return <span style={{background:s.bg,color:s.text,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,display:"inline-block",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>;
 };
 
-// ── One Touch Drop Zone ───────────────────────────────────────────────────
 const OneTouchZone=({onDone,entityType})=>{
   const [phase,setPhase]=useState("idle");
   const [progress,setProgress]=useState(0);
@@ -295,7 +287,125 @@ const OneTouchZone=({onDone,entityType})=>{
   );
 };
 
-// ── Client App ────────────────────────────────────────────────────────────
+// ── Firestore Setup Screen ────────────────────────────────────────────────
+const RULES_TEXT = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}`;
+
+const FirestoreSetup=({fbUser,onRetry})=>{
+  const [step,setStep]=useState(1);
+  const [copied,setCopied]=useState(false);
+  const [creating,setCreating]=useState(false);
+  const [done,setDone]=useState(false);
+  const [name,setName]=useState("");
+
+  const copy=(text)=>{ navigator.clipboard.writeText(text); setCopied(true); setTimeout(()=>setCopied(false),2500); };
+
+  const createDoc=async()=>{
+    if(!name.trim()){return;}
+    setCreating(true);
+    try{
+      await setDoc(doc(db,"users",fbUser.uid),{
+        name:name.trim(), email:fbUser.email, role:"admin",
+        company:"OneTouch Tax", active:true, createdAt:new Date().toISOString(),
+      });
+      setDone(true);
+      setTimeout(()=>onRetry(),1500);
+    }catch(e){
+      alert("Erro: "+e.message+"\n\nVerifique se as regras do Firestore foram publicadas corretamente.");
+    }
+    setCreating(false);
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f0f7ff,#e8f4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Manrope',system-ui",padding:24}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp2{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:11px 14px;border-radius:10px;font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp2:focus{border-color:${BRAND.touchColor};}`}</style>
+      <div style={{width:"100%",maxWidth:560,background:"#fff",borderRadius:24,border:"1px solid #e2e8f0",boxShadow:`0 24px 64px ${BRAND.touchColor}14`,overflow:"hidden"}}>
+
+        {/* Header */}
+        <div style={{background:BRAND.gradient,padding:"24px 32px",display:"flex",alignItems:"center",gap:14}}>
+          <div style={{fontSize:28}}>🔧</div>
+          <div>
+            <div style={{color:"#fff",fontWeight:800,fontSize:18,letterSpacing:"-0.5px"}}>Configuração inicial</div>
+            <div style={{color:"rgba(255,255,255,.7)",fontSize:13,marginTop:2}}>2 passos para liberar o acesso</div>
+          </div>
+        </div>
+
+        <div style={{padding:"28px 32px"}}>
+          {/* Step indicator */}
+          <div style={{display:"flex",gap:8,marginBottom:24}}>
+            {[1,2].map(s=>(
+              <div key={s} style={{flex:1,height:4,borderRadius:2,background:step>=s?BRAND.touchColor:"#e2e8f0",transition:"background .3s"}}/>
+            ))}
+          </div>
+
+          {step===1&&(
+            <div>
+              <h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:6}}>Passo 1 — Publicar as regras do Firestore</h2>
+              <p style={{color:"#64748b",fontSize:13,marginBottom:16,lineHeight:1.6}}>O Firestore está bloqueando o acesso. Cole as regras abaixo e clique em <strong>Publicar</strong>.</p>
+
+              <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:16,marginBottom:14,position:"relative"}}>
+                <pre style={{margin:0,fontSize:11,color:"#334155",fontFamily:"'Courier New',monospace",lineHeight:1.6,whiteSpace:"pre-wrap",overflowX:"auto"}}>{RULES_TEXT}</pre>
+                <button onClick={()=>copy(RULES_TEXT)} style={{position:"absolute",top:10,right:10,background:copied?"#10b981":BRAND.gradient,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}>
+                  {copied?"✓ Copiado!":"📋 Copiar"}
+                </button>
+              </div>
+
+              <a href="https://console.firebase.google.com/project/onetouchtax-a3c84/firestore/rules" target="_blank" rel="noreferrer"
+                style={{display:"flex",alignItems:"center",gap:8,background:"#f0f9ff",border:`1.5px solid ${BRAND.touchColor}`,borderRadius:12,padding:"12px 16px",textDecoration:"none",marginBottom:20}}>
+                <span style={{fontSize:20}}>🔗</span>
+                <div>
+                  <div style={{color:BRAND.touchColor,fontWeight:700,fontSize:13}}>Abrir Firestore Rules →</div>
+                  <div style={{color:"#64748b",fontSize:11,marginTop:1}}>console.firebase.google.com · Aba "Regras"</div>
+                </div>
+              </a>
+
+              <button onClick={()=>setStep(2)} style={{width:"100%",background:BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                Regras publicadas → Próximo passo
+              </button>
+            </div>
+          )}
+
+          {step===2&&(
+            <div>
+              <h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:800,color:"#0f172a",marginBottom:6}}>Passo 2 — Criar seu perfil de Admin</h2>
+              <p style={{color:"#64748b",fontSize:13,marginBottom:16,lineHeight:1.6}}>
+                Logado como <strong>{fbUser.email}</strong>. Informe seu nome para criar o perfil de administrador.
+              </p>
+
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Seu nome completo</label>
+                <input className="inp2" placeholder="Ex: Marcelo Queiroz" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createDoc()}/>
+              </div>
+
+              {done?(
+                <div style={{textAlign:"center",padding:"16px 0"}}>
+                  <div style={{fontSize:36,marginBottom:8}}>✅</div>
+                  <div style={{fontWeight:700,color:"#15803d",fontSize:15}}>Perfil criado! Entrando...</div>
+                </div>
+              ):(
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setStep(1)} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:12,padding:"13px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>← Voltar</button>
+                  <button onClick={createDoc} disabled={creating||!name.trim()} style={{flex:1,background:creating||!name.trim()?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:creating||!name.trim()?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                    {creating?"Criando perfil...":"✓ Criar perfil Admin"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ClientApp=({user,onLogout})=>{
   const [tab,setTab]=useState("home");
   const [entityType,setEntityType]=useState(user.entityType||"smllc");
@@ -351,7 +461,6 @@ const ClientApp=({user,onLogout})=>{
   );
 };
 
-// ── Accountant App ────────────────────────────────────────────────────────
 const AccountantApp=({user,onLogout})=>{
   const [entityType,setEntityType]=useState("smllc");
   const [txns,setTxns]=useState(SAMPLE.map(t=>({...t,finalCategory:t.aiCategory})));
@@ -402,7 +511,6 @@ const AccountantApp=({user,onLogout})=>{
   );
 };
 
-// ── Admin Panel ───────────────────────────────────────────────────────────
 const AdminPanel=({user,onLogout})=>{
   const [users,setUsers]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -410,13 +518,8 @@ const AdminPanel=({user,onLogout})=>{
   const [form,setForm]=useState({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""});
   const [creating,setCreating]=useState(false);
   const [msg,setMsg]=useState({text:"",ok:true});
-
-  const loadUsers=async()=>{
-    try{const snap=await getDocs(collection(db,"users"));setUsers(snap.docs.map(d=>({uid:d.id,...d.data()})));}catch{}
-    setLoading(false);
-  };
+  const loadUsers=async()=>{try{const snap=await getDocs(collection(db,"users"));setUsers(snap.docs.map(d=>({uid:d.id,...d.data()})));}catch{}setLoading(false);};
   useEffect(()=>{loadUsers();},[]);
-
   const createUser=async()=>{
     if(!form.name||!form.email||!form.pass||!form.company){setMsg({text:"Preencha todos os campos obrigatórios.",ok:false});return;}
     setCreating(true);setMsg({text:"",ok:true});
@@ -424,130 +527,72 @@ const AdminPanel=({user,onLogout})=>{
       const secondaryApp=initializeApp(FIREBASE_CONFIG,`secondary-${Date.now()}`);
       const secondaryAuth=getAuth(secondaryApp);
       const {user:newUser}=await createUserWithEmailAndPassword(secondaryAuth,form.email,form.pass);
-      await setDoc(doc(db,"users",newUser.uid),{
-        name:form.name,email:form.email,role:form.role,company:form.company,
-        entityType:form.entityType,bank:form.bank,account:form.account,
-        active:true,createdAt:new Date().toISOString(),
-      });
+      await setDoc(doc(db,"users",newUser.uid),{name:form.name,email:form.email,role:form.role,company:form.company,entityType:form.entityType,bank:form.bank,account:form.account,active:true,createdAt:new Date().toISOString()});
       await signOut(secondaryAuth);
       await deleteApp(secondaryApp);
       setMsg({text:`✅ Usuário "${form.name}" criado com sucesso!`,ok:true});
       setForm({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""});
       setShowForm(false);
       loadUsers();
-    }catch(e){
-      setMsg({text:`❌ ${e.code==="auth/email-already-in-use"?"E-mail já cadastrado":e.code==="auth/weak-password"?"Senha muito fraca (mín. 6 caracteres)":e.message}`,ok:false});
-    }
+    }catch(e){setMsg({text:`❌ ${e.code==="auth/email-already-in-use"?"E-mail já cadastrado":e.code==="auth/weak-password"?"Senha muito fraca (mín. 6 caracteres)":e.message}`,ok:false});}
     setCreating(false);
   };
-
-  const toggleActive=async(uid,current)=>{
-    try{await updateDoc(doc(db,"users",uid),{active:!current});loadUsers();}catch{}
-  };
-
+  const toggleActive=async(uid,current)=>{try{await updateDoc(doc(db,"users",uid),{active:!current});loadUsers();}catch{}};
   const roleColor={admin:"#7c3aed",accountant:BRAND.touchColor,client:"#10b981"};
   const roleLabel={admin:"Admin",accountant:"Contador",client:"Cliente"};
-  const clients=users.filter(u=>u.role==="client").length;
-  const accountants=users.filter(u=>u.role==="accountant").length;
-  const admins=users.filter(u=>u.role==="admin").length;
-
   return(
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:10px 13px;border-radius:10px;font-size:13px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp:focus{border-color:${BRAND.touchColor};}.sel{background:#f8fafc;border:1px solid #e2e8f0;color:#334155;padding:"8px 12px";border-radius:9px;font-family:inherit;font-size:13px;outline:none;cursor:pointer;width:100%;padding:10px 13px;}`}</style>
-      {/* Topbar */}
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:10px 13px;border-radius:10px;font-size:13px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp:focus{border-color:${BRAND.touchColor};}.sel{background:#f8fafc;border:1px solid #e2e8f0;color:#334155;border-radius:9px;font-family:inherit;font-size:13px;outline:none;cursor:pointer;width:100%;padding:10px 13px;}`}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}><NavLogo dark={false}/><span style={{background:"#7c3aed",color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,letterSpacing:1}}>ADMIN</span></div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:13,color:"#64748b"}}>{user.name}</span><button onClick={onLogout} style={{background:"none",border:"1px solid #e2e8f0",color:"#64748b",padding:"5px 12px",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:12}}>Sair</button></div>
       </div>
-
       <div style={{padding:"28px 28px 60px",maxWidth:1000,margin:"0 auto"}}>
-        <div style={{marginBottom:24}}>
-          <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Gerenciar Usuários</h1>
-          <p style={{color:"#64748b",fontSize:13,margin:0}}>Crie e gerencie clientes e contadores do OneTouch Tax.</p>
-        </div>
-
-        {/* Stats */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
-          {[{l:"Total",v:users.length,c:"#334155"},{l:"Clientes",v:clients,c:"#10b981"},{l:"Contadores",v:accountants,c:BRAND.touchColor},{l:"Admins",v:admins,c:"#7c3aed"}].map((s,i)=><div key={i} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"18px 20px",borderTop:`3px solid ${s.c}`}}><div style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",fontWeight:600,marginTop:2}}>{s.l}</div></div>)}
-        </div>
-
-        {/* Msg */}
+        <div style={{marginBottom:24}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Gerenciar Usuários</h1><p style={{color:"#64748b",fontSize:13,margin:0}}>Crie e gerencie clientes e contadores do OneTouch Tax.</p></div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>{[{l:"Total",v:users.length,c:"#334155"},{l:"Clientes",v:users.filter(u=>u.role==="client").length,c:"#10b981"},{l:"Contadores",v:users.filter(u=>u.role==="accountant").length,c:BRAND.touchColor},{l:"Admins",v:users.filter(u=>u.role==="admin").length,c:"#7c3aed"}].map((s,i)=><div key={i} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"18px 20px",borderTop:`3px solid ${s.c}`}}><div style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",fontWeight:600,marginTop:2}}>{s.l}</div></div>)}</div>
         {msg.text&&<div style={{background:msg.ok?"#f0fdf4":"#fef2f2",border:`1px solid ${msg.ok?"#86efac":"#fca5a5"}`,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:msg.ok?"#15803d":"#dc2626",fontWeight:600}}>{msg.text}</div>}
-
-        {/* Header + button */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:700,color:"#0f172a",margin:0}}>Usuários cadastrados</h2>
-          <button onClick={()=>{setShowForm(!showForm);setMsg({text:"",ok:true});}} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            {showForm?"✕ Cancelar":"+ Novo Usuário"}
-          </button>
-        </div>
-
-        {/* Create form */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h2 style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:700,color:"#0f172a",margin:0}}>Usuários cadastrados</h2><button onClick={()=>{setShowForm(!showForm);setMsg({text:"",ok:true});}} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{showForm?"✕ Cancelar":"+ Novo Usuário"}</button></div>
         {showForm&&<div style={{background:"#fff",border:`1.5px solid ${BRAND.touchColor}`,borderRadius:16,padding:24,marginBottom:20}}>
           <h3 style={{fontFamily:"'Manrope',system-ui",fontSize:15,fontWeight:700,color:"#0f172a",marginBottom:18}}>Novo Usuário</h3>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
             <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Nome completo *</label><input className="inp" placeholder="João Silva" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div>
             <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>E-mail *</label><input className="inp" type="email" placeholder="joao@empresa.com" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))}/></div>
             <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Senha inicial *</label><input className="inp" type="password" placeholder="Mín. 6 caracteres" value={form.pass} onChange={e=>setForm(f=>({...f,pass:e.target.value}))}/></div>
-            <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Perfil *</label>
-              <select className="sel" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
-                <option value="client">👤 Cliente</option>
-                <option value="accountant">🧮 Contador</option>
-                <option value="admin">🔑 Admin</option>
-              </select>
-            </div>
-            <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Empresa / Nome comercial *</label><input className="inp" placeholder="Sunrise Services LLC" value={form.company} onChange={e=>setForm(f=>({...f,company:e.target.value}))}/></div>
-            {form.role==="client"&&<div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Tipo de entidade</label>
-              <select className="sel" value={form.entityType} onChange={e=>setForm(f=>({...f,entityType:e.target.value}))}>
-                {Object.entries(ENTITY_CONFIGS).map(([k,c])=><option key={k} value={k}>{c.label} · {c.form}</option>)}
-              </select>
-            </div>}
+            <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Perfil *</label><select className="sel" value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}><option value="client">👤 Cliente</option><option value="accountant">🧮 Contador</option><option value="admin">🔑 Admin</option></select></div>
+            <div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Empresa *</label><input className="inp" placeholder="Sunrise Services LLC" value={form.company} onChange={e=>setForm(f=>({...f,company:e.target.value}))}/></div>
+            {form.role==="client"&&<div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Tipo de entidade</label><select className="sel" value={form.entityType} onChange={e=>setForm(f=>({...f,entityType:e.target.value}))}>{Object.entries(ENTITY_CONFIGS).map(([k,c])=><option key={k} value={k}>{c.label} · {c.form}</option>)}</select></div>}
             {form.role==="client"&&<div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Banco</label><input className="inp" placeholder="Bank of America" value={form.bank} onChange={e=>setForm(f=>({...f,bank:e.target.value}))}/></div>}
             {form.role==="client"&&<div><label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:5}}>Conta (mascarada)</label><input className="inp" placeholder="**** **** 1234" value={form.account} onChange={e=>setForm(f=>({...f,account:e.target.value}))}/></div>}
           </div>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <button onClick={createUser} disabled={creating} style={{background:creating?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"11px 24px",fontSize:14,fontWeight:700,cursor:creating?"not-allowed":"pointer",fontFamily:"inherit"}}>
-              {creating?"Criando...":"✓ Criar Usuário"}
-            </button>
-            <span style={{fontSize:12,color:"#94a3b8"}}>O usuário receberá as credenciais e poderá redefinir a senha.</span>
+            <button onClick={createUser} disabled={creating} style={{background:creating?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"11px 24px",fontSize:14,fontWeight:700,cursor:creating?"not-allowed":"pointer",fontFamily:"inherit"}}>{creating?"Criando...":"✓ Criar Usuário"}</button>
+            <span style={{fontSize:12,color:"#94a3b8"}}>Usuário poderá redefinir a senha pelo app.</span>
           </div>
         </div>}
-
-        {/* Users table */}
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 90px 80px",gap:12,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}>
-            <span>Nome / E-mail</span><span>Empresa</span><span>Perfil</span><span style={{textAlign:"center"}}>Status</span><span style={{textAlign:"center"}}>Ação</span>
-          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 90px 80px",gap:12,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}><span>Nome / E-mail</span><span>Empresa</span><span>Perfil</span><span style={{textAlign:"center"}}>Status</span><span style={{textAlign:"center"}}>Ação</span></div>
           {loading&&<div style={{padding:36,textAlign:"center",color:"#94a3b8",fontSize:13}}>Carregando...</div>}
           {!loading&&users.length===0&&<div style={{padding:36,textAlign:"center",color:"#94a3b8",fontSize:13}}>Nenhum usuário cadastrado.</div>}
-          {users.map(u=>(
-            <div key={u.uid} style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 90px 80px",gap:12,padding:"13px 16px",borderBottom:"1px solid #f8fafc",alignItems:"center",background:u.active===false?"#fffbeb":"#fff"}}>
-              <div><div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{u.name}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{u.email}</div></div>
-              <div style={{fontSize:12,color:"#475569",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.company||"—"}</div>
-              <div><span style={{background:`${roleColor[u.role]||"#94a3b8"}18`,color:roleColor[u.role]||"#94a3b8",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20}}>{roleLabel[u.role]||u.role}</span></div>
-              <div style={{textAlign:"center"}}><span style={{fontSize:10,fontWeight:700,color:u.active!==false?"#10b981":"#f59e0b"}}>{u.active!==false?"● Ativo":"○ Inativo"}</span></div>
-              <div style={{textAlign:"center"}}>
-                <button onClick={()=>toggleActive(u.uid,u.active!==false)} style={{background:u.active!==false?"#fef2f2":"#f0fdf4",color:u.active!==false?"#dc2626":"#15803d",border:"none",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {u.active!==false?"Desativar":"Ativar"}
-                </button>
-              </div>
-            </div>
-          ))}
+          {users.map(u=><div key={u.uid} style={{display:"grid",gridTemplateColumns:"1fr 1fr 100px 90px 80px",gap:12,padding:"13px 16px",borderBottom:"1px solid #f8fafc",alignItems:"center",background:u.active===false?"#fffbeb":"#fff"}}>
+            <div><div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>{u.name}</div><div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{u.email}</div></div>
+            <div style={{fontSize:12,color:"#475569",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.company||"—"}</div>
+            <div><span style={{background:`${roleColor[u.role]||"#94a3b8"}18`,color:roleColor[u.role]||"#94a3b8",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20}}>{roleLabel[u.role]||u.role}</span></div>
+            <div style={{textAlign:"center"}}><span style={{fontSize:10,fontWeight:700,color:u.active!==false?"#10b981":"#f59e0b"}}>{u.active!==false?"● Ativo":"○ Inativo"}</span></div>
+            <div style={{textAlign:"center"}}><button onClick={()=>toggleActive(u.uid,u.active!==false)} style={{background:u.active!==false?"#fef2f2":"#f0fdf4",color:u.active!==false?"#dc2626":"#15803d",border:"none",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{u.active!==false?"Desativar":"Ativar"}</button></div>
+          </div>)}
         </div>
-        <p style={{fontSize:11,color:"#94a3b8",marginTop:12}}>💡 Para redefinir a senha de um usuário: Firebase Console → Authentication → busque o e-mail → Redefinir senha.</p>
+        <p style={{fontSize:11,color:"#94a3b8",marginTop:12}}>💡 Para redefinir senha: Firebase Console → Authentication → busque o e-mail → Redefinir senha.</p>
       </div>
     </div>
   );
 };
 
-// ── Login ─────────────────────────────────────────────────────────────────
 const Login=()=>{
   const [email,setEmail]=useState("");
   const [pass,setPass]=useState("");
   const [err,setErr]=useState("");
   const [loading,setLoading]=useState(false);
   const [resetSent,setResetSent]=useState(false);
-
   const go=async()=>{
     setLoading(true);setErr("");
     try{ await signInWithEmailAndPassword(auth,email,pass); }
@@ -556,13 +601,11 @@ const Login=()=>{
       setLoading(false);
     }
   };
-
   const forgotPassword=async()=>{
     if(!email){setErr("Digite seu e-mail para recuperar a senha.");return;}
     try{ await sendPasswordResetEmail(auth,email);setResetSent(true);setErr(""); }
     catch{ setErr("Não foi possível enviar o e-mail de recuperação."); }
   };
-
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f0f7ff 0%,#e8f4ff 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Manrope',system-ui"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.li{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:12px 15px;border-radius:10px;font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.li:focus{border-color:${BRAND.touchColor};}`}</style>
@@ -575,7 +618,7 @@ const Login=()=>{
           <div style={{textAlign:"center",padding:"20px 0"}}>
             <div style={{fontSize:40,marginBottom:12}}>📧</div>
             <div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginBottom:8}}>E-mail enviado!</div>
-            <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Verifique sua caixa de entrada para redefinir a senha.</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Verifique sua caixa de entrada.</div>
             <button onClick={()=>setResetSent(false)} style={{background:"none",border:"none",color:BRAND.touchColor,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Voltar ao login</button>
           </div>
         ):(
@@ -596,7 +639,6 @@ const Login=()=>{
   );
 };
 
-// ── Loading screen ────────────────────────────────────────────────────────
 const Loading=()=>(
   <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f7ff",fontFamily:"'Manrope',system-ui"}}>
     <div style={{textAlign:"center"}}><AppIcon size={52}/><p style={{marginTop:14,color:"#64748b",fontSize:14,fontWeight:500}}>Carregando...</p></div>
@@ -607,6 +649,7 @@ const Loading=()=>(
 export default function App() {
   const [user,setUser]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [setupData,setSetupData]=useState(null); // {fbUser, mode: "rules"|"doc"}
 
   useEffect(()=>{
     return onAuthStateChanged(auth,async(fbUser)=>{
@@ -615,19 +658,48 @@ export default function App() {
           const snap=await getDoc(doc(db,"users",fbUser.uid));
           if(snap.exists()&&snap.data().active!==false){
             setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});
+            setSetupData(null);
           } else {
-            await signOut(auth);
+            // Doc não existe — mostrar setup para criar o perfil admin
+            setSetupData({fbUser, mode:"doc"});
             setUser(null);
           }
-        }catch{ setUser(null); }
-      } else { setUser(null); }
+        }catch(e){
+          const isPermission=e.code==="permission-denied"||e.message?.toLowerCase().includes("permission")||e.message?.toLowerCase().includes("missing or insufficient");
+          if(isPermission){
+            // Regras do Firestore bloqueando — mostrar setup
+            setSetupData({fbUser, mode:"rules"});
+          } else {
+            setSetupData(null);
+          }
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+        setSetupData(null);
+      }
       setLoading(false);
     });
   },[]);
 
+  const retryLogin=()=>{
+    setSetupData(null);
+    setLoading(true);
+    // Re-trigger auth check
+    const fbUser=auth.currentUser;
+    if(fbUser){
+      getDoc(doc(db,"users",fbUser.uid)).then(snap=>{
+        if(snap.exists()&&snap.data().active!==false){
+          setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});
+        }
+      }).catch(()=>{}).finally(()=>setLoading(false));
+    } else { setLoading(false); }
+  };
+
   if(loading) return <Loading/>;
+  if(setupData) return <FirestoreSetup fbUser={setupData.fbUser} onRetry={retryLogin}/>;
   if(!user) return <Login/>;
-  const logout=()=>signOut(auth);
+  const logout=()=>{ signOut(auth); setUser(null); setSetupData(null); };
   if(user.role==="admin") return <AdminPanel user={user} onLogout={logout}/>;
   if(user.role==="accountant") return <AccountantApp user={user} onLogout={logout}/>;
   return <ClientApp user={user} onLogout={logout}/>;
