@@ -29,12 +29,9 @@ export default async function handler(req) {
   try {
     const body = await req.json();
 
-    // Always use the correct current model regardless of what client sends
-    const payload = {
-      ...body,
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-    };
+    // Force correct model name
+    body.model = "claude-sonnet-4-6";
+    body.max_tokens = body.max_tokens || 2000;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -43,7 +40,7 @@ export default async function handler(req) {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();
