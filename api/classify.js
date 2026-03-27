@@ -7,13 +7,12 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured", key_present: false });
+  if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
 
   try {
     const { messages } = req.body;
-    console.log("[classify] key prefix:", apiKey.slice(0, 16), "messages:", messages?.length);
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -21,17 +20,27 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 2000,
         messages,
       }),
     });
 
-    const data = await response.json();
-    console.log("[classify] anthropic status:", response.status, "error:", data?.error?.message);
-    return res.status(response.status).json(data);
+    const data = await anthropicRes.json();
+    console.log("[classify] anthropic status:", anthropicRes.status, "| error:", data?.error?.message || "none");
+
+    // Always return 200 from our function — include anthropic status in body if error
+    if (!anthropicRes.ok) {
+      return res.status(200).json({
+        error: data?.error?.message || "Anthropic API error",
+        anthropic_status: anthropicRes.status,
+        content: [{ text: "[]" }],
+      });
+    }
+
+    return res.status(200).json(data);
   } catch (err) {
     console.error("[classify] exception:", err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(200).json({ error: err.message, content: [{ text: "[]" }] });
   }
 }
