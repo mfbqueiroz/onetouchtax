@@ -183,12 +183,13 @@ const TYPE_META = {
   other:   { bg:"#f8fafc",text:"#475569",dot:"#94a3b8" },
 };
 
+// ── Demo users (dados fictícios) ──────────────────────────────────────────
 const USERS = [
-  { id:1, email:"marcelo@onetouchtax.com", password:"ott2025", role:"client",
-    name:"Marcelo Queiroz", company:"GS Car Rental / Queiroz Consulting LLC",
-    entityType:"smllc", bank:"Bank of America", account:"8981 1438 1791", avatar:"MQ" },
-  { id:2, email:"cpa@onetouchtax.com", password:"cpa2025", role:"accountant",
-    name:"CPA Partner", company:"Escritório Contábil Parceiro", avatar:"CP" },
+  { id:1, email:"cliente@demo.com", password:"demo123", role:"client",
+    name:"Carlos Andrade", company:"Sunrise Services LLC",
+    entityType:"smllc", bank:"First National Bank", account:"**** **** 4521", avatar:"CA" },
+  { id:2, email:"contador@demo.com", password:"cpa123", role:"accountant",
+    name:"Ana Pereira, CPA", company:"Pereira & Associados", avatar:"AP" },
 ];
 
 function parseBankText(text) {
@@ -250,12 +251,12 @@ async function parseSpreadsheet(file) {
 }
 
 const ENTITY_RULES = {
-  smllc:`SCHEDULE C: Mobile deposits/"REAL AUTO SALES LLC"/"OGM TRADING LLC"→Gross Receipts. PROG SELECT INS→Insurance. SPECTRUM/DUKEENERGY→Utilities. T-MOBILE→Utilities. JUSTBCLAU→Wages. Costco Gas/Shell/7-Eleven fuel→Car & Truck — Gasoline. Mechanic/body shop→Car & Truck — Repairs. "Zelle to Marcelo Queiroz"→Owner's Draw. WF Payment/Westlake→Interest — Other. Orange County FL→Taxes & Licenses. SUNBIZ/BOIRCOM→Taxes & Licenses. Independent contractors→Contract Labor (1099-NEC). Attorney/accountant→Legal & Professional Services. Grocery/Publix/Walmart/ALDI/Rokka's→Personal. Amazon Store Card/clothing→Personal. Bank transfers→Transfer. Restaurants w business purpose→Meals (50%).`,
-  scorp:`FORM 1120-S: Owner-employee salary→Compensation of Officers (REQUIRED). Distributions→Shareholder Distributions (NOT deductible). Other employees W-2→Salaries & Wages.`,
-  ccorp:`FORM 1120: Executive salaries→Compensation of Officers. Dividends paid→Dividends Paid (NOT deductible). Donations→Charitable Contributions (max 10%).`,
-  mmllc:`FORM 1065: Fixed partner payments→Guaranteed Payments to Partners. Distributions→Partner Distributions (K-1).`,
-  partnership:`FORM 1065: Same as MMLLC.`,
-  sole_prop:`SCHEDULE C: Same as SMLLC. Owner draws→Owner's Draw (NOT deductible).`,
+  smllc:`SCHEDULE C: Business payments received → Gross Receipts. Insurance premiums → Insurance (Business). Internet/cable/electricity/phone → Utilities. Employee payroll → Wages (W-2 Employees). Fuel/gas stations → Car & Truck — Gasoline. Vehicle repairs → Car & Truck — Repairs. Owner withdrawals/draws → Owner's Draw (NOT deductible). Loan interest payments → Interest — Other. State/county/city taxes and fees → Taxes & Licenses. Independent contractor payments → Contract Labor (1099-NEC). Attorney/accountant fees → Legal & Professional Services. Personal grocery/clothing/non-business → Personal (Non-Deductible). Bank-to-bank transfers → Transfer. Business meals with clients → Meals (50% deductible).`,
+  scorp:`FORM 1120-S: Owner-employee salary → Compensation of Officers (REQUIRED). Shareholder distributions → Shareholder Distributions (NOT deductible). Other employees W-2 → Salaries & Wages.`,
+  ccorp:`FORM 1120: Executive salaries → Compensation of Officers. Dividends paid to shareholders → Dividends Paid (NOT deductible). Charitable donations → Charitable Contributions (max 10%).`,
+  mmllc:`FORM 1065: Fixed partner payments → Guaranteed Payments to Partners. Partner distributions → Partner Distributions (K-1).`,
+  partnership:`FORM 1065: Same rules as MMLLC.`,
+  sole_prop:`SCHEDULE C: Same rules as SMLLC. Owner draws → Owner's Draw (NOT deductible).`,
 };
 
 async function classifyBatch(batch, entityType) {
@@ -279,17 +280,20 @@ Transactions: ${JSON.stringify(batch.map(t=>({id:t.id,date:t.date,description:t.
   }catch{return[];}
 }
 
+// ── Sample data (100% fictício) ───────────────────────────────────────────
 const SAMPLE=[
-  {id:"s1",date:"12/13/2024",description:"REAL AUTO SALES LLC Transfer",         amount:5150.00,aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue — Sch-C L.1",          status:"pending"},
-  {id:"s2",date:"12/06/2024",description:"REAL AUTO SALES LLC Transfer",         amount:1000.00,aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue",                         status:"pending"},
-  {id:"s3",date:"12/09/2024",description:"SPECTRUM - Internet/Cable",            amount:-84.99, aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — business internet",           status:"approved"},
-  {id:"s4",date:"12/16/2024",description:"DUKEENERGY - Electric Bill",           amount:-361.72,aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — electricity",                 status:"approved"},
-  {id:"s5",date:"12/17/2024",description:"T-MOBILE PCS SVC",                     amount:-300.24,aiCategory:"Utilities",                aiConfidence:.93,aiNote:"Sch-C L.25 — phone",                      status:"approved"},
-  {id:"s6",date:"12/16/2024",description:"WF PAYMENT - Auto Loan",               amount:-1217.45,aiCategory:"Interest — Other",        aiConfidence:.91,aiNote:"Sch-C L.16b — loan interest",             status:"pending"},
-  {id:"s7",date:"12/02/2024",description:"Zelle to Marcelo Queiroz",             amount:-6500.00,aiCategory:"Owner's Draw",            aiConfidence:.99,aiNote:"NOT deductible — owner's draw",            status:"pending"},
-  {id:"s8",date:"12/30/2024",description:"Rokka's Market / Shell Service",       amount:-202.07,aiCategory:"Car & Truck — Gasoline",   aiConfidence:.81,aiNote:"Sch-C L.9 — business fuel",               status:"pending"},
-  {id:"s9",date:"12/02/2024",description:"Walmart (card)",                       amount:-134.66,aiCategory:"Personal (Non-Deductible)",aiConfidence:.89,aiNote:"Personal grocery",                         status:"pending"},
-  {id:"s10",date:"12/16/2024",description:"Online Banking transfer to CHK 0210",amount:-100.00, aiCategory:"Transfer",                aiConfidence:.98,aiNote:"Inter-account transfer",                   status:"approved"},
+  {id:"s1",date:"03/14/2025",description:"SUNRISE TRADING LLC - Payment",        amount:4800.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.97,aiNote:"Business revenue — Sch-C L.1",        status:"pending"},
+  {id:"s2",date:"03/07/2025",description:"BLUE HORIZON SERVICES - Invoice #112", amount:1250.00, aiCategory:"Gross Receipts or Sales",  aiConfidence:.96,aiNote:"Business revenue",                       status:"pending"},
+  {id:"s3",date:"03/10/2025",description:"CONNECTPRO - Internet/Cable",          amount:-89.99,  aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — business internet",         status:"approved"},
+  {id:"s4",date:"03/18/2025",description:"CITYPOWER - Electric Bill",            amount:-274.50, aiCategory:"Utilities",                aiConfidence:.95,aiNote:"Sch-C L.25 — electricity",               status:"approved"},
+  {id:"s5",date:"03/19/2025",description:"UNITEL WIRELESS - Monthly Plan",       amount:-185.00, aiCategory:"Utilities",                aiConfidence:.93,aiNote:"Sch-C L.25 — business phone",            status:"approved"},
+  {id:"s6",date:"03/18/2025",description:"FIRST NATIONAL - Vehicle Loan Pmt",   amount:-1180.00,aiCategory:"Interest — Other",          aiConfidence:.91,aiNote:"Sch-C L.16b — loan interest portion",   status:"pending"},
+  {id:"s7",date:"03/03/2025",description:"Zelle to Carlos Andrade",              amount:-5000.00,aiCategory:"Owner's Draw",              aiConfidence:.99,aiNote:"NOT deductible — owner withdrawal",      status:"pending"},
+  {id:"s8",date:"03/28/2025",description:"GAS EXPRESS / QuickFuel Station",      amount:-198.40, aiCategory:"Car & Truck — Gasoline",   aiConfidence:.82,aiNote:"Sch-C L.9 — business fuel",             status:"pending"},
+  {id:"s9",date:"03/05/2025",description:"VALUEMART STORE (personal card)",      amount:-112.30, aiCategory:"Personal (Non-Deductible)",aiConfidence:.88,aiNote:"Personal purchase — not deductible",     status:"pending"},
+  {id:"s10",date:"03/18/2025",description:"Internal Transfer to CHK-8847",       amount:-200.00, aiCategory:"Transfer",                 aiConfidence:.98,aiNote:"Inter-account transfer — not deductible",status:"approved"},
+  {id:"s11",date:"03/22/2025",description:"OFFICESUPPLY CO - Office Materials",  amount:-143.60, aiCategory:"Office Expenses",          aiConfidence:.90,aiNote:"Sch-C L.18 — office supplies",          status:"pending"},
+  {id:"s12",date:"03/25/2025",description:"METRO INSURANCE GROUP - Monthly",     amount:-320.00, aiCategory:"Insurance (Business)",     aiConfidence:.94,aiNote:"Sch-C L.15 — business insurance",       status:"approved"},
 ];
 
 const ConfBar = ({v=0})=>{
@@ -504,7 +508,7 @@ const ClientApp=({user,onLogout})=>{
             <div className="card" style={{marginTop:16}}>
               <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:12}}>Formatos suportados</div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                {[{icon:"📄",label:"PDF",desc:"Extratos Bank of America, Chase, Wells Fargo."},
+                {[{icon:"📄",label:"PDF",desc:"Extratos Bank of America, Chase, Wells Fargo e outros."},
                   {icon:"📊",label:"Excel (.xlsx)",desc:"Colunas: Date, Description, Amount."},
                   {icon:"📃",label:"CSV",desc:"Exportação QuickBooks ou banco."}].map(f=>(
                   <div key={f.label} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:16}}>
@@ -782,7 +786,7 @@ const Login=({onLogin})=>{
           <div style={{display:"flex",justifyContent:"center",marginBottom:4}}>
             <Logo scale={0.36} dark={false}/>
           </div>
-          <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Classificação Fiscal · IRS Compliant 2024</div>
+          <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Classificação Fiscal · IRS Compliant 2025</div>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <input className="li" placeholder="E-mail" type="email" value={email}
@@ -798,13 +802,13 @@ const Login=({onLogin})=>{
           </button>
         </div>
         <div style={{marginTop:22,borderTop:"1px solid #f1f5f9",paddingTop:18}}>
-          <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Demo</div>
+          <div style={{fontSize:10,color:"#94a3b8",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Acesso Demo</div>
           <div style={{display:"flex",flexDirection:"column",gap:7}}>
-            <button className="db" onClick={()=>{setEmail("marcelo@onetouchtax.com");setPass("ott2025");}}>
-              👤 Cliente — marcelo@onetouchtax.com / ott2025
+            <button className="db" onClick={()=>{setEmail("cliente@demo.com");setPass("demo123");}}>
+              👤 Cliente — cliente@demo.com / demo123
             </button>
-            <button className="db" onClick={()=>{setEmail("cpa@onetouchtax.com");setPass("cpa2025");}}>
-              🧮 Contador — cpa@onetouchtax.com / cpa2025
+            <button className="db" onClick={()=>{setEmail("contador@demo.com");setPass("cpa123");}}>
+              🧮 Contador — contador@demo.com / cpa123
             </button>
           </div>
         </div>
