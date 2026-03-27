@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 
 // ── Version ───────────────────────────────────────────────────────────────
-const APP_VERSION = "v1.0.3";
+const APP_VERSION = "v1.0.4";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDXUQtI8Mz8IghJZXzjzz5muBhqaHAL7ps",
@@ -99,12 +99,9 @@ const AppIcon = ({ size=32 }) => (
   </div>
 );
 
-// Version badge component
 const VersionBadge = ({ style={} }) => (
   <div style={{textAlign:"center",padding:"6px 0",...style}}>
-    <span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,fontFamily:"'Manrope',system-ui"}}>
-      {APP_VERSION}
-    </span>
+    <span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,fontFamily:"'Manrope',system-ui"}}>{APP_VERSION}</span>
   </div>
 );
 
@@ -165,104 +162,82 @@ const TYPE_META = {
 };
 
 function parseBankText(text) {
-  const txns = [], lines = text.split(/\n|\r\n/), seen = new Set();
-  const patterns = [
+  const txns=[], lines=text.split(/\n|\r\n/), seen=new Set();
+  const patterns=[
     /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.{3,80?}?)\s+([-–]?\$?[\d,]+\.\d{2})(?:\s|$)/,
     /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([-–]?\$?[\d,]+\.\d{2})$/,
     /^(\d{2}\/\d{2})\s+(.{4,70}?)\s{2,}([-–]?\$?[\d,]+\.\d{2})/,
     /^(\d{2}\/\d{2}\/\d{4})\s+([A-Z#].*?)\s+([-–]?\$?[\d,]+\.\d{2})\s*([-–]?\$?[\d,]+\.\d{2})?/,
     /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+([-–]?\$?[\d,]+\.\d{2})\s+([-–]?\$?[\d,]+\.\d{2})/,
   ];
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i].trim().replace(/\s{2,}/g," ");
-    if (raw.length < 8) continue;
-    let matched = false;
-    for (const pat of patterns) {
-      const m = pat.exec(raw);
-      if (!m) continue;
-      const dateStr = m[1], desc = (m[2]||"").trim().replace(/\s+/g," ");
-      const rawAmt = (m[3]||"").replace(/[$,\s]/g,"").replace("–","-");
-      const amt = parseFloat(rawAmt);
-      if (!desc||isNaN(amt)||Math.abs(amt)<0.01) continue;
-      if (/^(date|description|balance|amount|total|beginning|ending|transaction)/i.test(desc)) continue;
-      const key = `${dateStr}|${desc}|${amt}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      let date = dateStr;
-      const parts = dateStr.split("/");
-      if (parts.length===3&&parts[2].length===2) { const yr=parseInt(parts[2]); date=`${parts[0]}/${parts[1]}/${yr<50?2000+yr:1900+yr}`; }
-      else if (parts.length===2) { date=`${parts[0]}/${parts[1]}/${new Date().getFullYear()}`; }
+  for(let i=0;i<lines.length;i++){
+    const raw=lines[i].trim().replace(/\s{2,}/g," ");
+    if(raw.length<8) continue;
+    let matched=false;
+    for(const pat of patterns){
+      const m=pat.exec(raw); if(!m) continue;
+      const dateStr=m[1],desc=(m[2]||"").trim().replace(/\s+/g," ");
+      const rawAmt=(m[3]||"").replace(/[$,\s]/g,"").replace("–","-");
+      const amt=parseFloat(rawAmt);
+      if(!desc||isNaN(amt)||Math.abs(amt)<0.01) continue;
+      if(/^(date|description|balance|amount|total|beginning|ending|transaction)/i.test(desc)) continue;
+      const key=`${dateStr}|${desc}|${amt}`; if(seen.has(key)) continue; seen.add(key);
+      let date=dateStr; const parts=dateStr.split("/");
+      if(parts.length===3&&parts[2].length===2){const yr=parseInt(parts[2]);date=`${parts[0]}/${parts[1]}/${yr<50?2000+yr:1900+yr}`;}
+      else if(parts.length===2){date=`${parts[0]}/${parts[1]}/${new Date().getFullYear()}`;}
       txns.push({id:`p${i}-${Math.random().toString(36).slice(2)}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});
       matched=true; break;
     }
-    if (!matched) {
-      const ld=/((\d{1,2}\/\d{1,2}\/\d{2,4}))/.exec(raw), la=/([-–]?\$?[\d,]{1,10}\.\d{2})(?:\s|$)/.exec(raw);
-      if (ld&&la) {
-        const amt=parseFloat(la[1].replace(/[$,\s]/g,"").replace("–","-"));
-        if (!isNaN(amt)&&Math.abs(amt)>0.01) {
-          const after=raw.slice(ld.index+ld[0].length).trim();
+    if(!matched){
+      const ld=/(\d{1,2}\/\d{1,2}\/\d{2,4})/.exec(raw),la=/([-–]?\$?[\d,]{1,10}\.\d{2})(?:\s|$)/.exec(raw);
+      if(ld&&la){const amt=parseFloat(la[1].replace(/[$,\s]/g,"").replace("–","-"));
+        if(!isNaN(amt)&&Math.abs(amt)>0.01){const after=raw.slice(ld.index+ld[0].length).trim();
           const desc=(after.slice(0,after.lastIndexOf(la[1])).trim()||after.slice(0,60)).replace(/\s+/g," ").trim();
-          if (desc.length>2) { const key=`${ld[1]}|${desc}|${amt}`; if(!seen.has(key)){seen.add(key);txns.push({id:`p${i}-${Math.random().toString(36).slice(2)}`,date:ld[1],description:desc,amount:amt,aiCategory:null,status:"unclassified"});} }
-        }
-      }
+          if(desc.length>2){const key=`${ld[1]}|${desc}|${amt}`;if(!seen.has(key)){seen.add(key);txns.push({id:`p${i}-${Math.random().toString(36).slice(2)}`,date:ld[1],description:desc,amount:amt,aiCategory:null,status:"unclassified"});}}}}
     }
   }
   return txns;
 }
 
-async function parsePDF(file) {
-  return new Promise(resolve => {
-    if (!window.pdfjsLib) { resolve([]); return; }
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const pdf = await window.pdfjsLib.getDocument({ data: e.target.result }).promise;
-        let fullText = "";
-        for (let p = 1; p <= pdf.numPages; p++) {
-          const page = await pdf.getPage(p);
-          const content = await page.getTextContent();
-          const byY = {};
-          for (const item of content.items) {
-            const y = Math.round(item.transform[5]);
-            if (!byY[y]) byY[y] = [];
-            byY[y].push({ x: item.transform[4], str: item.str });
-          }
-          for (const y of Object.keys(byY).map(Number).sort((a,b)=>b-a)) {
-            fullText += byY[y].sort((a,b)=>a.x-b.x).map(r=>r.str).join(" ") + "\n";
-          }
+async function parsePDF(file){
+  return new Promise(resolve=>{
+    if(!window.pdfjsLib){resolve([]);return;}
+    const reader=new FileReader();
+    reader.onload=async(e)=>{
+      try{
+        const pdf=await window.pdfjsLib.getDocument({data:e.target.result}).promise;
+        let fullText="";
+        for(let p=1;p<=pdf.numPages;p++){
+          const page=await pdf.getPage(p),content=await page.getTextContent(),byY={};
+          for(const item of content.items){const y=Math.round(item.transform[5]);if(!byY[y])byY[y]=[];byY[y].push({x:item.transform[4],str:item.str});}
+          for(const y of Object.keys(byY).map(Number).sort((a,b)=>b-a)){fullText+=byY[y].sort((a,b)=>a.x-b.x).map(r=>r.str).join(" ")+"\n";}
         }
         resolve(parseBankText(fullText));
-      } catch(e) { console.error("PDF parse error:",e); resolve([]); }
+      }catch(e){console.error("PDF parse error:",e);resolve([]);}
     };
     reader.readAsArrayBuffer(file);
   });
 }
 
-async function parseSpreadsheet(file) {
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target.result,{type:"binary"});
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
-        const txns = [];
-        rows.forEach((row,i) => {
-          if (i===0) return;
-          const date=String(row[0]||"").trim(), desc=String(row[1]||"").trim();
-          const raw=String(row[2]||row[3]||"").replace(/[$,\s]/g,"");
-          const amt=parseFloat(raw);
-          if (date&&desc&&!isNaN(amt)) txns.push({id:`x${i}-${Math.random()}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});
-        });
+async function parseSpreadsheet(file){
+  return new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:"binary"}),ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}),txns=[];
+        rows.forEach((row,i)=>{if(i===0)return;const date=String(row[0]||"").trim(),desc=String(row[1]||"").trim();
+          const raw=String(row[2]||row[3]||"").replace(/[$,\s]/g,""),amt=parseFloat(raw);
+          if(date&&desc&&!isNaN(amt))txns.push({id:`x${i}-${Math.random()}`,date,description:desc,amount:amt,aiCategory:null,status:"unclassified"});});
         resolve(txns);
-      } catch { resolve([]); }
+      }catch{resolve([]);}
     };
     reader.readAsBinaryString(file);
   });
 }
 
-const ENTITY_RULES = {
-  smllc:`SCHEDULE C: Business payments received→Gross Receipts. Insurance premiums→Insurance (Business). Internet/cable/electricity/phone→Utilities. Employee payroll→Wages (W-2 Employees). Fuel/gas stations→Car & Truck — Gasoline. Vehicle repairs→Car & Truck — Repairs. Owner withdrawals→Owner's Draw (NOT deductible). Loan interest→Interest — Other. State/county taxes and fees→Taxes & Licenses. Contractor payments→Contract Labor (1099-NEC). Attorney/accountant fees→Legal & Professional Services. Personal grocery/clothing→Personal (Non-Deductible). Bank-to-bank transfers→Transfer. Business meals→Meals (50% deductible).`,
+const ENTITY_RULES={
+  smllc:`SCHEDULE C: Business payments received→Gross Receipts. Insurance premiums→Insurance (Business). Internet/cable/electricity/phone→Utilities. Employee payroll→Wages (W-2 Employees). Fuel/gas stations→Car & Truck — Gasoline. Vehicle repairs→Car & Truck — Repairs. Owner withdrawals→Owner's Draw (NOT deductible). Loan interest→Interest — Other. State/county taxes→Taxes & Licenses. Contractor payments→Contract Labor (1099-NEC). Attorney/accountant fees→Legal & Professional Services. Personal grocery/clothing→Personal (Non-Deductible). Bank-to-bank transfers→Transfer. Business meals→Meals (50% deductible).`,
   scorp:`FORM 1120-S: Owner-employee salary→Compensation of Officers (REQUIRED). Shareholder distributions→Shareholder Distributions (NOT deductible). Employees W-2→Salaries & Wages.`,
   ccorp:`FORM 1120: Executive salaries→Compensation of Officers. Dividends→Dividends Paid (NOT deductible). Donations→Charitable Contributions (max 10%).`,
   mmllc:`FORM 1065: Fixed partner payments→Guaranteed Payments to Partners. Distributions→Partner Distributions (K-1).`,
@@ -270,95 +245,40 @@ const ENTITY_RULES = {
   sole_prop:`SCHEDULE C: Same as SMLLC. Owner draws→Owner's Draw (NOT deductible).`,
 };
 
-async function classifyBatch(batch, entityType) {
-  const cfg = ENTITY_CONFIGS[entityType];
-  const cats = CATEGORIES[entityType] || CATEGORIES.smllc;
-  const allCats = [...cats.income, ...cats.expenses, ...cats.nonDeduc];
-  const prompt = `You are a US tax expert for ${cfg.label} (${cfg.form}).\n${ENTITY_RULES[entityType]||""}\nCategories: ${allCats.map((c,i)=>`${i+1}. ${c}`).join(", ")}\nRespond ONLY valid JSON array, no markdown:\n[{"id":<id>,"category":"<exact label>","confidence":<0.0-1.0>,"note":"<brief IRS reason>"}]\nTransactions: ${JSON.stringify(batch.map(t=>({id:t.id,date:t.date,description:t.description,amount:t.amount})))}`;
-  try {
-    const res = await fetch("/api/classify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
-    });
-    const data = await res.json();
+async function classifyBatch(batch,entityType){
+  const cfg=ENTITY_CONFIGS[entityType],cats=CATEGORIES[entityType]||CATEGORIES.smllc;
+  const allCats=[...cats.income,...cats.expenses,...cats.nonDeduc];
+  const prompt=`You are a US tax expert for ${cfg.label} (${cfg.form}).\n${ENTITY_RULES[entityType]||""}\nCategories: ${allCats.map((c,i)=>`${i+1}. ${c}`).join(", ")}\nRespond ONLY valid JSON array, no markdown:\n[{"id":<id>,"category":"<exact label>","confidence":<0.0-1.0>,"note":"<brief IRS reason>"}]\nTransactions: ${JSON.stringify(batch.map(t=>({id:t.id,date:t.date,description:t.description,amount:t.amount})))}`;
+  try{
+    const res=await fetch("/api/classify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:prompt}]})});
+    const data=await res.json();
     return JSON.parse((data.content?.[0]?.text||"[]").replace(/```json|```/g,"").trim());
-  } catch(e) { console.error("classifyBatch error:",e); return []; }
+  }catch(e){console.error("classifyBatch error:",e);return[];}
 }
 
-function exportPDF(txns, entityType, userName, company) {
-  const cfg = ENTITY_CONFIGS[entityType] || ENTITY_CONFIGS.smllc;
-  const income = txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
-  const expense = txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
-  const date = new Date().toLocaleDateString("en-US");
-  const rows = txns.map(t=>`
-    <tr style="border-bottom:1px solid #e2e8f0">
-      <td style="padding:6px 8px;font-size:11px;color:#64748b">${t.date}</td>
-      <td style="padding:6px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description}</td>
-      <td style="padding:6px 8px;font-size:11px;text-align:right;color:${t.amount>=0?"#10b981":"#334155"}">${t.amount>=0?"+":"–"}$${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</td>
-      <td style="padding:6px 8px;font-size:11px">${t.aiCategory||"—"}</td>
-      <td style="padding:6px 8px;font-size:11px;text-align:center;color:${t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}">${t.status==="approved"?"✓ Approved":t.status==="rejected"?"✗ Rejected":"Pending"}</td>
-    </tr>`).join("");
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OneTouch Tax Report</title>
-  <style>body{font-family:'Arial',sans-serif;margin:0;padding:32px;color:#0f172a;background:#fff}
-  table{width:100%;border-collapse:collapse;margin-top:20px}
-  th{background:#0a2a5e;color:#fff;padding:8px;font-size:11px;text-align:left}
-  .summary{display:flex;gap:24px;margin:20px 0}
-  .box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;flex:1}
-  .box-label{font-size:11px;color:#64748b;margin-bottom:4px}
-  .box-val{font-size:22px;font-weight:700}
-  @media print{body{padding:16px}}</style></head><body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0a2a5e;padding-bottom:16px;margin-bottom:20px">
-    <div><h1 style="font-size:22px;margin:0">OneTouch Tax — Transaction Report</h1><p style="color:#64748b;font-size:12px;margin:4px 0 0">${company} · ${cfg.label} (${cfg.form})</p></div>
-    <div style="text-align:right;font-size:12px;color:#64748b"><div>${userName}</div><div>Generated: ${date}</div><div style="margin-top:2px;font-size:10px;color:#cbd5e1">OneTouch Tax ${APP_VERSION}</div></div>
-  </div>
-  <div class="summary">
-    <div class="box"><div class="box-label">Gross Receipts</div><div class="box-val" style="color:#10b981">$${income.toLocaleString("en-US",{minimumFractionDigits:2})}</div></div>
-    <div class="box"><div class="box-label">Deductible Expenses</div><div class="box-val" style="color:#1055b8">$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}</div></div>
-    <div class="box"><div class="box-label">Net Income (est.)</div><div class="box-val" style="color:#0a2a5e">$${(income-expense).toLocaleString("en-US",{minimumFractionDigits:2})}</div></div>
-    <div class="box"><div class="box-label">Total Transactions</div><div class="box-val" style="color:#8b5cf6">${txns.length}</div></div>
-  </div>
-  <table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>IRS Category</th><th>Status</th></tr></thead>
-  <tbody>${rows}</tbody></table>
-  <div style="margin-top:24px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px">
-    OneTouch Tax ${APP_VERSION} · IRS Compliant · This report is for informational purposes only. Consult a qualified CPA before filing.
-  </div>
-  <script>window.onload=()=>window.print()</script></body></html>`;
-  const w=window.open("","_blank"); if(w){w.document.write(html);w.document.close();}
+function exportPDF(txns,entityType,userName,company){
+  const cfg=ENTITY_CONFIGS[entityType]||ENTITY_CONFIGS.smllc;
+  const income=txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const expense=txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
+  const date=new Date().toLocaleDateString("en-US");
+  const rows=txns.map(t=>`<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:6px 8px;font-size:11px;color:#64748b">${t.date}</td><td style="padding:6px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.description}</td><td style="padding:6px 8px;font-size:11px;text-align:right;color:${t.amount>=0?"#10b981":"#334155"}">${t.amount>=0?"+":"–"}$${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</td><td style="padding:6px 8px;font-size:11px">${t.aiCategory||"—"}</td><td style="padding:6px 8px;font-size:11px;text-align:center;color:${t.status==="approved"?"#10b981":t.status==="rejected"?"#ef4444":"#f59e0b"}">${t.status==="approved"?"✓ Approved":t.status==="rejected"?"✗ Rejected":"Pending"}</td></tr>`).join("");
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>OneTouch Tax Report</title><style>body{font-family:'Arial',sans-serif;margin:0;padding:32px;color:#0f172a;background:#fff}table{width:100%;border-collapse:collapse;margin-top:20px}th{background:#0a2a5e;color:#fff;padding:8px;font-size:11px;text-align:left}.summary{display:flex;gap:24px;margin:20px 0}.box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;flex:1}.box-label{font-size:11px;color:#64748b;margin-bottom:4px}.box-val{font-size:22px;font-weight:700}@media print{body{padding:16px}}</style></head><body><div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0a2a5e;padding-bottom:16px;margin-bottom:20px"><div><h1 style="font-size:22px;margin:0">OneTouch Tax — Transaction Report</h1><p style="color:#64748b;font-size:12px;margin:4px 0 0">${company} · ${cfg.label} (${cfg.form})</p></div><div style="text-align:right;font-size:12px;color:#64748b"><div>${userName}</div><div>Generated: ${date}</div><div style="margin-top:2px;font-size:10px;color:#cbd5e1">OneTouch Tax ${APP_VERSION}</div></div></div><div class="summary"><div class="box"><div class="box-label">Gross Receipts</div><div class="box-val" style="color:#10b981">$${income.toLocaleString("en-US",{minimumFractionDigits:2})}</div></div><div class="box"><div class="box-label">Deductible Expenses</div><div class="box-val" style="color:#1055b8">$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}</div></div><div class="box"><div class="box-label">Net Income (est.)</div><div class="box-val" style="color:#0a2a5e">$${(income-expense).toLocaleString("en-US",{minimumFractionDigits:2})}</div></div><div class="box"><div class="box-label">Total Transactions</div><div class="box-val" style="color:#8b5cf6">${txns.length}</div></div></div><table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>IRS Category</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table><div style="margin-top:24px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px">OneTouch Tax ${APP_VERSION} · IRS Compliant · This report is for informational purposes only. Consult a qualified CPA before filing.</div><script>window.onload=()=>window.print()</script></body></html>`;
+  const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}
 }
 
-function exportQBO(txns, entityType, company) {
+function exportQBO(txns,entityType,company){
   const lines=["!TRNS\tTRNSID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!SPL\tSPLID\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tMEMO","!ENDTRNS"];
-  txns.forEach((t,i)=>{
-    const acct=t.aiCategory||"Uncategorized", memo=t.description.replace(/\t/g," "), amt=t.amount.toFixed(2);
-    lines.push(`TRNS\t${i+1}\tGENERAL JOURNAL\t${t.date}\t${acct}\t${company}\t${amt}\t${memo}`);
-    lines.push(`SPL\t${i+1}\tGENERAL JOURNAL\t${t.date}\tChecking\t${company}\t${(-t.amount).toFixed(2)}\t${memo}`);
-    lines.push("ENDTRNS");
-  });
-  const blob=new Blob([lines.join("\n")],{type:"text/plain"});
-  const url=URL.createObjectURL(blob),a=document.createElement("a");
-  a.href=url;a.download=`onetouchtax_${new Date().toISOString().slice(0,10)}.iif`;a.click();
-  URL.revokeObjectURL(url);
+  txns.forEach((t,i)=>{const acct=t.aiCategory||"Uncategorized",memo=t.description.replace(/\t/g," "),amt=t.amount.toFixed(2);lines.push(`TRNS\t${i+1}\tGENERAL JOURNAL\t${t.date}\t${acct}\t${company}\t${amt}\t${memo}`);lines.push(`SPL\t${i+1}\tGENERAL JOURNAL\t${t.date}\tChecking\t${company}\t${(-t.amount).toFixed(2)}\t${memo}`);lines.push("ENDTRNS");});
+  const blob=new Blob([lines.join("\n")],{type:"text/plain"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=`onetouchtax_${new Date().toISOString().slice(0,10)}.iif`;a.click();URL.revokeObjectURL(url);
 }
 
-const ConfBar=({v=0})=>{
-  const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";
-  return(<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/></div><span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span></div>);
-};
-const CatBadge=({label,entityType})=>{
-  const s=TYPE_META[getCatType(label,entityType)];
-  return <span style={{background:s.bg,color:s.text,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,display:"inline-block",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>;
-};
+const ConfBar=({v=0})=>{const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";return(<div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/></div><span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span></div>);};
+const CatBadge=({label,entityType})=>{const s=TYPE_META[getCatType(label,entityType)];return <span style={{background:s.bg,color:s.text,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,display:"inline-block",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>;};
 
 const OneTouchZone=({onDone,entityType})=>{
-  const [phase,setPhase]=useState("idle");
-  const [progress,setProgress]=useState(0);
-  const [count,setCount]=useState(0);
-  const [dragging,setDragging]=useState(false);
-  const fileRef=useRef();
-  useEffect(()=>{
-    if(!window.pdfjsLib){const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";};document.head.appendChild(s);}
-  },[]);
+  const [phase,setPhase]=useState("idle"),[progress,setProgress]=useState(0),[count,setCount]=useState(0),[dragging,setDragging]=useState(false),fileRef=useRef();
+  useEffect(()=>{if(!window.pdfjsLib){const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";};document.head.appendChild(s);}},[]);
   const process=useCallback(async(file)=>{
     const ext=file.name.split(".").pop().toLowerCase();
     setPhase("reading");setProgress(10);
@@ -367,14 +287,12 @@ const OneTouchZone=({onDone,entityType})=>{
     setCount(raw.length);setPhase("classifying");setProgress(30);
     const result=[...raw];
     for(let i=0;i<raw.length;i+=15){
-      const batch=raw.slice(i,i+15);
-      const classified=await classifyBatch(batch,entityType);
+      const batch=raw.slice(i,i+15),classified=await classifyBatch(batch,entityType);
       const map={};classified.forEach(r=>{map[r.id]=r;});
       batch.forEach((t,bi)=>{result[i+bi]=map[t.id]?{...t,aiCategory:map[t.id].category,aiConfidence:map[t.id].confidence,aiNote:map[t.id].note,status:"pending"}:{...t,aiCategory:"Other Business Expenses",aiConfidence:.4,status:"pending"};});
       setProgress(30+Math.round(((i+15)/raw.length)*65));
     }
-    setProgress(100);setPhase("done");
-    setTimeout(()=>onDone(result),600);
+    setProgress(100);setPhase("done");setTimeout(()=>onDone(result),600);
   },[entityType,onDone]);
   const handleFile=f=>{if(f)process(f);};
   const onDrop=useCallback(e=>{e.preventDefault();setDragging(false);handleFile(e.dataTransfer.files?.[0]);},[handleFile]);
@@ -405,29 +323,14 @@ service cloud.firestore {
 }`;
 
 const FirestoreSetup=({fbUser,onRetry})=>{
-  const [step,setStep]=useState(1);
-  const [copied,setCopied]=useState(false);
-  const [creating,setCreating]=useState(false);
-  const [done,setDone]=useState(false);
-  const [name,setName]=useState("");
+  const [step,setStep]=useState(1),[copied,setCopied]=useState(false),[creating,setCreating]=useState(false),[done,setDone]=useState(false),[name,setName]=useState("");
   const copy=(text)=>{navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),2500);};
-  const createDoc=async()=>{
-    if(!name.trim())return;
-    setCreating(true);
-    try{
-      await setDoc(doc(db,"users",fbUser.uid),{name:name.trim(),email:fbUser.email,role:"admin",company:"OneTouch Tax",active:true,createdAt:new Date().toISOString()});
-      setDone(true);setTimeout(()=>onRetry(),1500);
-    }catch(e){alert("Erro: "+e.message);}
-    setCreating(false);
-  };
+  const createDoc=async()=>{if(!name.trim())return;setCreating(true);try{await setDoc(doc(db,"users",fbUser.uid),{name:name.trim(),email:fbUser.email,role:"admin",company:"OneTouch Tax",active:true,createdAt:new Date().toISOString()});setDone(true);setTimeout(()=>onRetry(),1500);}catch(e){alert("Erro: "+e.message);}setCreating(false);};
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f0f7ff,#e8f4ff)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Manrope',system-ui",padding:24}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp2{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:11px 14px;border-radius:10px;font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp2:focus{border-color:${BRAND.touchColor};}`}</style>
       <div style={{width:"100%",maxWidth:560,background:"#fff",borderRadius:24,border:"1px solid #e2e8f0",boxShadow:`0 24px 64px ${BRAND.touchColor}14`,overflow:"hidden"}}>
-        <div style={{background:BRAND.gradient,padding:"24px 32px",display:"flex",alignItems:"center",gap:14}}>
-          <div style={{fontSize:28}}>🔧</div>
-          <div><div style={{color:"#fff",fontWeight:800,fontSize:18}}>Configuração inicial</div><div style={{color:"rgba(255,255,255,.7)",fontSize:13,marginTop:2}}>2 passos para liberar o acesso</div></div>
-        </div>
+        <div style={{background:BRAND.gradient,padding:"24px 32px",display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:28}}>🔧</div><div><div style={{color:"#fff",fontWeight:800,fontSize:18}}>Configuração inicial</div><div style={{color:"rgba(255,255,255,.7)",fontSize:13,marginTop:2}}>2 passos para liberar o acesso</div></div></div>
         <div style={{padding:"28px 32px"}}>
           <div style={{display:"flex",gap:8,marginBottom:24}}>{[1,2].map(s=><div key={s} style={{flex:1,height:4,borderRadius:2,background:step>=s?BRAND.touchColor:"#e2e8f0",transition:"background .3s"}}/>)}</div>
           {step===1&&(<div>
@@ -438,8 +341,7 @@ const FirestoreSetup=({fbUser,onRetry})=>{
               <button onClick={()=>copy(RULES_TEXT)} style={{position:"absolute",top:10,right:10,background:copied?"#10b981":BRAND.gradient,color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
             </div>
             <a href="https://console.firebase.google.com/project/onetouchtax-a3c84/firestore/rules" target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:8,background:"#f0f9ff",border:`1.5px solid ${BRAND.touchColor}`,borderRadius:12,padding:"12px 16px",textDecoration:"none",marginBottom:20}}>
-              <span style={{fontSize:20}}>🔗</span>
-              <div><div style={{color:BRAND.touchColor,fontWeight:700,fontSize:13}}>Abrir Firestore Rules →</div><div style={{color:"#64748b",fontSize:11,marginTop:1}}>console.firebase.google.com · Aba "Regras"</div></div>
+              <span style={{fontSize:20}}>🔗</span><div><div style={{color:BRAND.touchColor,fontWeight:700,fontSize:13}}>Abrir Firestore Rules →</div><div style={{color:"#64748b",fontSize:11,marginTop:1}}>console.firebase.google.com · Aba "Regras"</div></div>
             </a>
             <button onClick={()=>setStep(2)} style={{width:"100%",background:BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Regras publicadas → Próximo passo</button>
           </div>)}
@@ -461,14 +363,11 @@ const FirestoreSetup=({fbUser,onRetry})=>{
 };
 
 const ClientApp=({user,onLogout})=>{
-  const [tab,setTab]=useState("home");
-  const [entityType,setEntityType]=useState(user.entityType||"smllc");
-  const [txns,setTxns]=useState([]);
+  const [tab,setTab]=useState("home"),[entityType,setEntityType]=useState(user.entityType||"smllc"),[txns,setTxns]=useState([]);
   const cfg=ENTITY_CONFIGS[entityType];
   const income=txns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
   const expense=txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
-  const pending=txns.filter(t=>t.status==="pending").length;
-  const approved=txns.filter(t=>t.status==="approved").length;
+  const pending=txns.filter(t=>t.status==="pending").length,approved=txns.filter(t=>t.status==="approved").length;
   const NAV=[{id:"home",label:"Home",icon:"🏠"},{id:"import",label:"Importar",icon:"📂"},{id:"transactions",label:"Transações",icon:"📋"},{id:"export",label:"Exportar",icon:"📤"},{id:"settings",label:"Config.",icon:"⚙️"}];
   const approveT=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"approved"}:t));
   const rejectT=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"rejected"}:t));
@@ -476,10 +375,9 @@ const ClientApp=({user,onLogout})=>{
   return(
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui",display:"flex"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.ntb{background:none;border:none;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px;transition:all .15s;color:#64748b;width:100%;}.ntb.a{background:#f0f9ff;color:${BRAND.touchColor};font-weight:700;}.ntb:hover:not(.a){background:#f1f5f9;color:#334155;}.card{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:22px;}.ab{border:none;padding:5px 11px;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:3px;}.gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}.rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}`}</style>
-      {/* Sidebar */}
       <div style={{width:212,background:"#fff",borderRight:"1px solid #e2e8f0",padding:"20px 12px",display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
-        <div style={{display:"flex",justifyContent:"center",marginBottom:20}}><NavLogo dark={false}/></div>
-        <div style={{background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:9,padding:"7px 10px",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:20}}><NavLogo/></div>
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:9,padding:"7px 10px",marginBottom:16}}>
           <div style={{fontSize:10,color:BRAND.touchColor,fontWeight:800,textTransform:"uppercase",letterSpacing:.8}}>{cfg.form}</div>
           <div style={{fontSize:12,color:BRAND.arcOuter,fontWeight:600,marginTop:1}}>{cfg.label}</div>
         </div>
@@ -492,8 +390,6 @@ const ClientApp=({user,onLogout})=>{
           <VersionBadge/>
         </div>
       </div>
-
-      {/* Main */}
       <div style={{marginLeft:212,flex:1,padding:"28px 28px 48px"}}>
         {tab==="home"&&<div>
           <div style={{marginBottom:22}}><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:28,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>Olá, {user.name?.split(" ")[0]} 👋</h1><p style={{color:"#64748b",fontSize:13,margin:0}}>{user.company} · {cfg.form}</p></div>
@@ -501,16 +397,8 @@ const ClientApp=({user,onLogout})=>{
             <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}><span style={{fontSize:30}}>⚡</span><div><div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>One Touch — Importar agora</div><div style={{fontSize:13,color:"#64748b"}}>Solte seu extrato. O app classifica tudo.</div></div></div>
             <OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType}/>
           </div>
-          {txns.length===0?(
-            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"40px 24px",textAlign:"center"}}>
-              <div style={{fontSize:44,marginBottom:12}}>📂</div>
-              <div style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:700,color:"#0f172a",marginBottom:8}}>Nenhuma transação ainda</div>
-              <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Importe seu primeiro extrato para começar.</div>
-              <button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Importar extrato →</button>
-            </div>
-          ):(
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>{[{l:"Receita Total",v:`$${income.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:"#10b981",i:"📈"},{l:"Deduções",v:`$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:BRAND.touchColor,i:"📉"},{l:"Transações",v:txns.length,c:"#8b5cf6",i:"📋"},{l:"Pendentes",v:pending,c:"#f59e0b",i:"⏳"}].map((s,i)=><div key={i} className="card" style={{borderTop:`3px solid ${s.c}`}}><div style={{fontSize:24,marginBottom:6}}>{s.i}</div><div style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",marginTop:2,fontWeight:500}}>{s.l}</div></div>)}</div>
-          )}
+          {txns.length===0?(<div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"40px 24px",textAlign:"center"}}><div style={{fontSize:44,marginBottom:12}}>📂</div><div style={{fontFamily:"'Manrope',system-ui",fontSize:16,fontWeight:700,color:"#0f172a",marginBottom:8}}>Nenhuma transação ainda</div><div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Importe seu primeiro extrato para começar.</div><button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Importar extrato →</button></div>)
+          :(<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>{[{l:"Receita Total",v:`$${income.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:"#10b981",i:"📈"},{l:"Deduções",v:`$${expense.toLocaleString("en-US",{minimumFractionDigits:2})}`,c:BRAND.touchColor,i:"📉"},{l:"Transações",v:txns.length,c:"#8b5cf6",i:"📋"},{l:"Pendentes",v:pending,c:"#f59e0b",i:"⏳"}].map((s,i)=><div key={i} className="card" style={{borderTop:`3px solid ${s.c}`}}><div style={{fontSize:24,marginBottom:6}}>{s.i}</div><div style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:s.c,letterSpacing:"-1px"}}>{s.v}</div><div style={{fontSize:12,color:"#94a3b8",marginTop:2,fontWeight:500}}>{s.l}</div></div>)}</div>)}
         </div>}
         {tab==="import"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Importar Extrato</h1>
@@ -526,59 +414,33 @@ const ClientApp=({user,onLogout})=>{
               <button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",padding:"9px 18px",borderRadius:10,border:"none",fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer"}}>+ Importar</button>
             </div>
           </div>
-          {txns.length===0?(
-            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"48px 24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:6}}>Nenhuma transação</div><div style={{fontSize:13,color:"#94a3b8"}}>Importe um extrato para começar.</div></div>
-          ):(
-            <div className="card" style={{padding:0,overflow:"hidden"}}>
-              <div style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 170px 80px 110px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}>
-                <span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span style={{textAlign:"center"}}>Ação</span>
-              </div>
-              {txns.map(t=>(
-                <div key={t.id} style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 170px 80px 110px",gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc",background:t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff"}}>
-                  <span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span>
-                  <span style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</span>
-                  <span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>{t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span>
-                  <CatBadge label={t.aiCategory||"—"} entityType={entityType}/>
-                  <ConfBar v={t.aiConfidence||0}/>
-                  <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                    {t.status==="approved"?<span style={{fontSize:10,fontWeight:700,color:"#10b981"}}>✓ Ok</span>
-                      :t.status==="rejected"?<span style={{fontSize:10,fontWeight:700,color:"#ef4444"}}>✗ Rev.</span>
-                      :(<><button className="ab gn" onClick={()=>approveT(t.id)}>✓</button><button className="ab rd" onClick={()=>rejectT(t.id)}>✕</button></>)}
-                  </div>
-                </div>
-              ))}
+          {txns.length===0?(<div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"48px 24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:6}}>Nenhuma transação</div><div style={{fontSize:13,color:"#94a3b8"}}>Importe um extrato para começar.</div></div>)
+          :(<div className="card" style={{padding:0,overflow:"hidden"}}>
+            <div style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 170px 80px 110px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}>
+              <span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span style={{textAlign:"center"}}>Ação</span>
             </div>
-          )}
-          <div style={{marginTop:10,fontSize:11,color:"#94a3b8",display:"flex",gap:16}}>
-            <span>✓ Confirmadas: <strong>{approved}</strong></span><span>⏳ Pendentes: <strong>{pending}</strong></span>
-          </div>
+            {txns.map(t=>(<div key={t.id} style={{display:"grid",gridTemplateColumns:"88px 1fr 108px 170px 80px 110px",gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc",background:t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff"}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span>
+              <span style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</span>
+              <span style={{fontSize:12,fontWeight:700,textAlign:"right",color:t.amount>=0?"#10b981":"#64748b"}}>{t.amount>=0?"+":"–"}${Math.abs(t.amount).toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+              <CatBadge label={t.aiCategory||"—"} entityType={entityType}/>
+              <ConfBar v={t.aiConfidence||0}/>
+              <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                {t.status==="approved"?<span style={{fontSize:10,fontWeight:700,color:"#10b981"}}>✓ Ok</span>:t.status==="rejected"?<span style={{fontSize:10,fontWeight:700,color:"#ef4444"}}>✗ Rev.</span>:(<><button className="ab gn" onClick={()=>approveT(t.id)}>✓</button><button className="ab rd" onClick={()=>rejectT(t.id)}>✕</button></>)}
+              </div>
+            </div>))}
+          </div>)}
+          <div style={{marginTop:10,fontSize:11,color:"#94a3b8",display:"flex",gap:16}}><span>✓ Confirmadas: <strong>{approved}</strong></span><span>⏳ Pendentes: <strong>{pending}</strong></span></div>
         </div>}
         {tab==="export"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Exportar</h1>
           <p style={{color:"#64748b",margin:"0 0 28px",fontSize:13}}>Exporte as transações classificadas em dois formatos.</p>
-          {txns.length===0?(
-            <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"48px 24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📤</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:6}}>Nenhuma transação para exportar</div><button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:8}}>Importar extrato →</button></div>
-          ):(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-              <div className="card" style={{borderTop:"3px solid #ef4444"}}>
-                <div style={{fontSize:40,marginBottom:14}}>📄</div>
-                <h3 style={{fontFamily:"'Manrope',system-ui",fontSize:18,fontWeight:800,color:"#0f172a",marginBottom:8}}>Relatório PDF</h3>
-                <p style={{color:"#64748b",fontSize:13,lineHeight:1.6,marginBottom:16}}>Relatório completo com todas as transações, resumo de receitas e deduções. Ideal para envio ao contador.</p>
-                <ul style={{listStyle:"none",marginBottom:20,display:"flex",flexDirection:"column",gap:6}}>{["✓ Todas as transações listadas","✓ Resumo de receitas e despesas","✓ Categorias IRS incluídas","✓ Pronto para imprimir"].map(f=><li key={f} style={{fontSize:12,color:"#475569"}}>{f}</li>)}</ul>
-                <div style={{marginBottom:12,padding:"10px 14px",background:"#f8fafc",borderRadius:10,fontSize:12,color:"#64748b"}}><strong>{txns.length}</strong> transações · <strong>{approved}</strong> confirmadas · <strong>{pending}</strong> pendentes</div>
-                <button onClick={()=>exportPDF(txns,entityType,user.name,user.company)} style={{width:"100%",background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Exportar PDF →</button>
-              </div>
-              <div className="card" style={{borderTop:"3px solid #10b981"}}>
-                <div style={{fontSize:40,marginBottom:14}}>🏦</div>
-                <h3 style={{fontFamily:"'Manrope',system-ui",fontSize:18,fontWeight:800,color:"#0f172a",marginBottom:8}}>QuickBooks (.IIF)</h3>
-                <p style={{color:"#64748b",fontSize:13,lineHeight:1.6,marginBottom:16}}>Arquivo IIF compatível com QuickBooks Desktop e Online. Importe diretamente como lançamentos contábeis.</p>
-                <ul style={{listStyle:"none",marginBottom:20,display:"flex",flexDirection:"column",gap:6}}>{["✓ Formato IIF (QuickBooks nativo)","✓ Lançamentos por categoria IRS","✓ Compatível com QB Desktop & Online","✓ Importação direta sem ajustes"].map(f=><li key={f} style={{fontSize:12,color:"#475569"}}>{f}</li>)}</ul>
-                <div style={{marginBottom:12,padding:"10px 14px",background:"#f8fafc",borderRadius:10,fontSize:12,color:"#64748b"}}><strong>{txns.length}</strong> transações · Empresa: <strong>{user.company||"—"}</strong></div>
-                <button onClick={()=>exportQBO(txns,entityType,user.company)} style={{width:"100%",background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🏦 Exportar QuickBooks (.IIF) →</button>
-              </div>
-            </div>
-          )}
-          <div style={{marginTop:16,padding:"12px 16px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:12,color:"#92400e"}}>💡 <strong>Dica:</strong> Confirme as transações antes de exportar para garantir classificações corretas.</div>
+          {txns.length===0?(<div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"48px 24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📤</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:6}}>Nenhuma transação para exportar</div><button onClick={()=>setTab("import")} style={{background:BRAND.gradient,color:"#fff",border:"none",borderRadius:10,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:8}}>Importar extrato →</button></div>)
+          :(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+            <div className="card" style={{borderTop:"3px solid #ef4444"}}><div style={{fontSize:40,marginBottom:14}}>📄</div><h3 style={{fontFamily:"'Manrope',system-ui",fontSize:18,fontWeight:800,color:"#0f172a",marginBottom:8}}>Relatório PDF</h3><p style={{color:"#64748b",fontSize:13,lineHeight:1.6,marginBottom:16}}>Relatório completo com todas as transações. Ideal para envio ao contador.</p><ul style={{listStyle:"none",marginBottom:20,display:"flex",flexDirection:"column",gap:6}}>{["✓ Todas as transações listadas","✓ Resumo de receitas e despesas","✓ Categorias IRS incluídas","✓ Pronto para imprimir"].map(f=><li key={f} style={{fontSize:12,color:"#475569"}}>{f}</li>)}</ul><div style={{marginBottom:12,padding:"10px 14px",background:"#f8fafc",borderRadius:10,fontSize:12,color:"#64748b"}}><strong>{txns.length}</strong> transações · <strong>{approved}</strong> confirmadas · <strong>{pending}</strong> pendentes</div><button onClick={()=>exportPDF(txns,entityType,user.name,user.company)} style={{width:"100%",background:"#ef4444",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Exportar PDF →</button></div>
+            <div className="card" style={{borderTop:"3px solid #10b981"}}><div style={{fontSize:40,marginBottom:14}}>🏦</div><h3 style={{fontFamily:"'Manrope',system-ui",fontSize:18,fontWeight:800,color:"#0f172a",marginBottom:8}}>QuickBooks (.IIF)</h3><p style={{color:"#64748b",fontSize:13,lineHeight:1.6,marginBottom:16}}>Arquivo IIF compatível com QuickBooks Desktop e Online.</p><ul style={{listStyle:"none",marginBottom:20,display:"flex",flexDirection:"column",gap:6}}>{["✓ Formato IIF (QuickBooks nativo)","✓ Lançamentos por categoria IRS","✓ Compatível com QB Desktop & Online","✓ Importação direta sem ajustes"].map(f=><li key={f} style={{fontSize:12,color:"#475569"}}>{f}</li>)}</ul><div style={{marginBottom:12,padding:"10px 14px",background:"#f8fafc",borderRadius:10,fontSize:12,color:"#64748b"}}><strong>{txns.length}</strong> transações · Empresa: <strong>{user.company||"—"}</strong></div><button onClick={()=>exportQBO(txns,entityType,user.company)} style={{width:"100%",background:"#10b981",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🏦 Exportar QuickBooks (.IIF) →</button></div>
+          </div>)}
+          <div style={{marginTop:16,padding:"12px 16px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:12,color:"#92400e"}}>💡 <strong>Dica:</strong> Confirme as transações antes de exportar.</div>
         </div>}
         {tab==="settings"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 22px",letterSpacing:"-1px"}}>Configurações</h1>
@@ -591,14 +453,8 @@ const ClientApp=({user,onLogout})=>{
 };
 
 const AccountantApp=({user,onLogout})=>{
-  const [entityType,setEntityType]=useState("smllc");
-  const [txns,setTxns]=useState([]);
-  const [filter,setFilter]=useState("pending");
-  const [search,setSearch]=useState("");
-  const [editId,setEditId]=useState(null);
-  const [editCat,setEditCat]=useState("");
-  const cfg=ENTITY_CONFIGS[entityType];
-  const cats=CATEGORIES[entityType]||CATEGORIES.smllc;
+  const [entityType,setEntityType]=useState("smllc"),[txns,setTxns]=useState([]),[filter,setFilter]=useState("pending"),[search,setSearch]=useState(""),[editId,setEditId]=useState(null),[editCat,setEditCat]=useState("");
+  const cfg=ENTITY_CONFIGS[entityType],cats=CATEGORIES[entityType]||CATEGORIES.smllc;
   const filtered=txns.filter(t=>filter==="all"?true:t.status===filter).filter(t=>search?t.description.toLowerCase().includes(search.toLowerCase()):true);
   const counts={all:txns.length,pending:txns.filter(t=>t.status==="pending").length,approved:txns.filter(t=>t.status==="approved").length,rejected:txns.filter(t=>t.status==="rejected").length};
   const approve=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"approved"}:t));
@@ -608,7 +464,7 @@ const AccountantApp=({user,onLogout})=>{
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.fc{background:none;border:1px solid #e2e8f0;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;color:#64748b;}.fc.a{background:${BRAND.arcOuter};border-color:${BRAND.arcOuter};color:#fff;}.fc:hover:not(.a){border-color:${BRAND.touchColor};color:${BRAND.touchColor};}.ab{border:none;padding:6px 12px;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px;}.gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}.rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}.bl{background:#f0f9ff;color:${BRAND.touchColor};}.bl:hover{background:#e0f2fe;}select.cs{border:1.5px solid ${BRAND.touchColor};border-radius:8px;padding:4px 9px;font-family:inherit;font-size:11px;color:#0f172a;background:#fff;outline:none;}.si{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:8px 13px;border-radius:9px;font-size:13px;outline:none;font-family:inherit;transition:border-color .2s;width:240px;}.si:focus{border-color:${BRAND.touchColor};}`}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:16}}><NavLogo dark={false}/><span style={{color:"#94a3b8",fontSize:13}}>/ Contador</span><select value={entityType} onChange={e=>setEntityType(e.target.value)} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#334155",padding:"5px 10px",borderRadius:8,fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}>{Object.entries(ENTITY_CONFIGS).map(([k,c])=><option key={k} value={k}>{c.label} · {c.form}</option>)}</select></div>
+        <div style={{display:"flex",alignItems:"center",gap:16}}><NavLogo/><span style={{color:"#94a3b8",fontSize:13}}>/ Contador</span><select value={entityType} onChange={e=>setEntityType(e.target.value)} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#334155",padding:"5px 10px",borderRadius:8,fontFamily:"inherit",fontSize:12,outline:"none",cursor:"pointer"}}>{Object.entries(ENTITY_CONFIGS).map(([k,c])=><option key={k} value={k}>{c.label} · {c.form}</option>)}</select></div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <span style={{fontSize:9,fontWeight:700,color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,letterSpacing:"1px"}}>{APP_VERSION}</span>
           <span style={{fontSize:13,color:"#64748b"}}>{user.name}</span>
@@ -617,7 +473,7 @@ const AccountantApp=({user,onLogout})=>{
       </div>
       <div style={{padding:"24px 24px 48px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
-          <div><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:22,fontWeight:800,color:"#0f172a",margin:"0 0 3px",letterSpacing:"-0.8px"}}>Validação de Transações</h1><div style={{fontSize:12,color:"#64748b"}}>{cfg.label} · {cfg.form} · Clique na categoria para editar</div></div>
+          <div><h1 style={{fontFamily:"'Manrope',system-ui",fontSize:22,fontWeight:800,color:"#0f172a",margin:"0 0 3px",letterSpacing:"-0.8px"}}>Validação de Transações</h1><div style={{fontSize:12,color:"#64748b"}}>{cfg.label} · {cfg.form}</div></div>
           {counts.pending>0&&<button className="ab gn" onClick={()=>setTxns(p=>p.map(t=>t.status==="pending"?{...t,status:"approved"}:t))} style={{padding:"9px 18px",fontSize:13,border:"none"}}>✓ Aprovar todas ({counts.pending})</button>}
         </div>
         <div style={{display:"flex",gap:10,marginBottom:18}}>{[["all","Total","#334155"],["pending","Pendentes","#f59e0b"],["approved","Aprovadas","#10b981"],["rejected","Revisão","#ef4444"]].map(([k,l,c])=><div key={k} onClick={()=>setFilter(k)} style={{background:"#fff",border:`1.5px solid ${filter===k?c:"#e2e8f0"}`,borderRadius:12,padding:"10px 18px",cursor:"pointer",transition:"all .15s",boxShadow:filter===k?`0 2px 12px ${c}20`:"none"}}><div style={{fontFamily:"'Manrope',system-ui",fontSize:22,fontWeight:800,color:c,letterSpacing:"-1px"}}>{counts[k]}</div><div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{l}</div></div>)}</div>
@@ -626,8 +482,7 @@ const AccountantApp=({user,onLogout})=>{
           <div style={{display:"grid",gridTemplateColumns:"85px 1fr 108px 195px 80px 110px",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #e2e8f0",fontSize:10,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.8}}><span>Data</span><span>Descrição</span><span style={{textAlign:"right"}}>Valor</span><span>Classificação</span><span>Conf.</span><span style={{textAlign:"center"}}>Ações</span></div>
           {filtered.length===0&&<div style={{padding:48,textAlign:"center",color:"#94a3b8"}}><div style={{fontSize:36,marginBottom:8}}>{txns.length===0?"📋":"🎉"}</div><div style={{fontWeight:700,fontSize:15,color:"#0f172a"}}>{txns.length===0?"Nenhuma transação":"Tudo validado!"}</div></div>}
           {filtered.map(t=>{
-            const isEd=editId===t.id,type=getCatType(t.finalCategory||t.aiCategory,entityType),tm=TYPE_META[type];
-            const rowBg=t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff";
+            const isEd=editId===t.id,type=getCatType(t.finalCategory||t.aiCategory,entityType),tm=TYPE_META[type],rowBg=t.status==="approved"?"#f0fdf4":t.status==="rejected"?"#fef2f2":"#fff";
             return(<div key={t.id} style={{display:"grid",gridTemplateColumns:"85px 1fr 108px 195px 80px 110px",gap:10,alignItems:"center",padding:"11px 16px",borderBottom:"1px solid #f8fafc",background:rowBg}}>
               <span style={{fontSize:11,color:"#94a3b8"}}>{t.date}</span>
               <div><div style={{fontSize:12,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.description}>{t.description}</div>{t.aiNote&&<div style={{fontSize:10,color:"#94a3b8",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>ℹ {t.aiNote}</div>}</div>
@@ -638,19 +493,14 @@ const AccountantApp=({user,onLogout})=>{
             </div>);
           })}
         </div>
-        <div style={{marginTop:10,fontSize:11,color:"#94a3b8",display:"flex",gap:20}}><span>🟢 &gt;85%</span><span>🟡 60–85%</span><span>🔴 &lt;60% revisar</span><span>💡 Clique na categoria para editar</span></div>
       </div>
     </div>
   );
 };
 
 const AdminPanel=({user,onLogout})=>{
-  const [users,setUsers]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""});
-  const [creating,setCreating]=useState(false);
-  const [msg,setMsg]=useState({text:"",ok:true});
+  const [users,setUsers]=useState([]),[loading,setLoading]=useState(true),[showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""}),[creating,setCreating]=useState(false),[msg,setMsg]=useState({text:"",ok:true});
   const loadUsers=async()=>{try{const snap=await getDocs(collection(db,"users"));setUsers(snap.docs.map(d=>({uid:d.id,...d.data()})));}catch{}setLoading(false);};
   useEffect(()=>{loadUsers();},[]);
   const createUser=async()=>{
@@ -663,8 +513,7 @@ const AdminPanel=({user,onLogout})=>{
       await setDoc(doc(db,"users",newUser.uid),{name:form.name,email:form.email,role:form.role,company:form.company,entityType:form.entityType,bank:form.bank,account:form.account,active:true,createdAt:new Date().toISOString()});
       await signOut(secondaryAuth);await deleteApp(secondaryApp);
       setMsg({text:`✅ Usuário "${form.name}" criado com sucesso!`,ok:true});
-      setForm({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""});
-      setShowForm(false);loadUsers();
+      setForm({name:"",email:"",pass:"",role:"client",company:"",entityType:"smllc",bank:"",account:""});setShowForm(false);loadUsers();
     }catch(e){setMsg({text:`❌ ${e.code==="auth/email-already-in-use"?"E-mail já cadastrado":e.code==="auth/weak-password"?"Senha muito fraca (mín. 6 caracteres)":e.message}`,ok:false});}
     setCreating(false);
   };
@@ -675,7 +524,7 @@ const AdminPanel=({user,onLogout})=>{
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.inp{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:10px 13px;border-radius:10px;font-size:13px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.inp:focus{border-color:${BRAND.touchColor};}.sel{background:#f8fafc;border:1px solid #e2e8f0;color:#334155;border-radius:9px;font-family:inherit;font-size:13px;outline:none;cursor:pointer;width:100%;padding:10px 13px;}`}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",height:58,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}><NavLogo dark={false}/><span style={{background:"#7c3aed",color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,letterSpacing:1}}>ADMIN</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}><NavLogo/><span style={{background:"#7c3aed",color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderRadius:20,letterSpacing:1}}>ADMIN</span></div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <span style={{fontSize:9,fontWeight:700,color:"#cbd5e1",background:"#f1f5f9",padding:"2px 8px",borderRadius:20,letterSpacing:"1px"}}>{APP_VERSION}</span>
           <span style={{fontSize:13,color:"#64748b"}}>{user.name}</span>
@@ -723,37 +572,26 @@ const AdminPanel=({user,onLogout})=>{
 };
 
 const Login=()=>{
-  const [email,setEmail]=useState(""), [pass,setPass]=useState(""), [err,setErr]=useState(""), [loading,setLoading]=useState(false), [resetSent,setResetSent]=useState(false);
-  const go=async()=>{
-    setLoading(true);setErr("");
-    try{await signInWithEmailAndPassword(auth,email,pass);}
-    catch(e){setErr(e.code==="auth/invalid-credential"||e.code==="auth/wrong-password"||e.code==="auth/user-not-found"?"E-mail ou senha inválidos.":"Erro ao entrar. Tente novamente.");setLoading(false);}
-  };
-  const forgotPassword=async()=>{
-    if(!email){setErr("Digite seu e-mail para recuperar a senha.");return;}
-    try{await sendPasswordResetEmail(auth,email);setResetSent(true);setErr("");}
-    catch{setErr("Não foi possível enviar o e-mail de recuperação.");}
-  };
+  const [email,setEmail]=useState(""),[pass,setPass]=useState(""),[err,setErr]=useState(""),[loading,setLoading]=useState(false),[resetSent,setResetSent]=useState(false);
+  const go=async()=>{setLoading(true);setErr("");try{await signInWithEmailAndPassword(auth,email,pass);}catch(e){setErr(e.code==="auth/invalid-credential"||e.code==="auth/wrong-password"||e.code==="auth/user-not-found"?"E-mail ou senha inválidos.":"Erro ao entrar. Tente novamente.");setLoading(false);}};
+  const forgotPassword=async()=>{if(!email){setErr("Digite seu e-mail para recuperar a senha.");return;}try{await sendPasswordResetEmail(auth,email);setResetSent(true);setErr("");}catch{setErr("Não foi possível enviar o e-mail de recuperação.");}};
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f0f7ff 0%,#e8f4ff 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Manrope',system-ui"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.li{background:#fff;border:1.5px solid #e2e8f0;color:#0f172a;padding:12px 15px;border-radius:10px;font-size:14px;width:100%;outline:none;font-family:inherit;transition:border-color .2s;}.li:focus{border-color:${BRAND.touchColor};}`}</style>
       <div style={{width:420,padding:48,background:"#fff",borderRadius:24,border:"1px solid #e2e8f0",boxShadow:`0 24px 64px ${BRAND.touchColor}14`}}>
         <div style={{textAlign:"center",marginBottom:36}}>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:4}}><Logo scale={0.36} dark={false}/></div>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:4}}><Logo scale={0.36}/></div>
           <div style={{fontSize:13,color:"#94a3b8",marginTop:4}}>Classificação Fiscal · IRS Compliant 2025</div>
-          {/* Version badge on login */}
-          <div style={{marginTop:8}}>
-            <span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f8fafc",border:"1px solid #e2e8f0",padding:"2px 10px",borderRadius:20}}>{APP_VERSION}</span>
-          </div>
+          <div style={{marginTop:8}}><span style={{fontSize:9,fontWeight:700,letterSpacing:"1px",color:"#cbd5e1",background:"#f8fafc",border:"1px solid #e2e8f0",padding:"2px 10px",borderRadius:20}}>{APP_VERSION}</span></div>
         </div>
         {resetSent?(<div style={{textAlign:"center",padding:"20px 0"}}><div style={{fontSize:40,marginBottom:12}}>📧</div><div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginBottom:8}}>E-mail enviado!</div><div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Verifique sua caixa de entrada.</div><button onClick={()=>setResetSent(false)} style={{background:"none",border:"none",color:BRAND.touchColor,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← Voltar ao login</button></div>)
-          :(<div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <input className="li" placeholder="E-mail" type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}}/>
-            <input className="li" placeholder="Senha" type="password" value={pass} onChange={e=>{setPass(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()}/>
-            {err&&<div style={{color:"#ef4444",fontSize:12,textAlign:"center",fontWeight:600}}>{err}</div>}
-            <button onClick={go} disabled={loading} style={{background:loading?"#94a3b8":BRAND.gradient,color:"#fff",padding:14,borderRadius:10,border:"none",fontFamily:"inherit",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",marginTop:2}}>{loading?"Entrando...":"→ Entrar"}</button>
-            <div style={{textAlign:"center"}}><button onClick={forgotPassword} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Esqueci minha senha</button></div>
-          </div>)}
+        :(<div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <input className="li" placeholder="E-mail" type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}}/>
+          <input className="li" placeholder="Senha" type="password" value={pass} onChange={e=>{setPass(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()}/>
+          {err&&<div style={{color:"#ef4444",fontSize:12,textAlign:"center",fontWeight:600}}>{err}</div>}
+          <button onClick={go} disabled={loading} style={{background:loading?"#94a3b8":BRAND.gradient,color:"#fff",padding:14,borderRadius:10,border:"none",fontFamily:"inherit",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",marginTop:2}}>{loading?"Entrando...":"→ Entrar"}</button>
+          <div style={{textAlign:"center"}}><button onClick={forgotPassword} style={{background:"none",border:"none",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>Esqueci minha senha</button></div>
+        </div>)}
       </div>
     </div>
   );
@@ -761,10 +599,8 @@ const Login=()=>{
 
 const Loading=()=>(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0f7ff",fontFamily:"'Manrope',system-ui"}}><div style={{textAlign:"center"}}><AppIcon size={52}/><p style={{marginTop:14,color:"#64748b",fontSize:14,fontWeight:500}}>Carregando...</p></div></div>);
 
-export default function App() {
-  const [user,setUser]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [setupData,setSetupData]=useState(null);
+export default function App(){
+  const [user,setUser]=useState(null),[loading,setLoading]=useState(true),[setupData,setSetupData]=useState(null);
   useEffect(()=>{
     return onAuthStateChanged(auth,async(fbUser)=>{
       if(fbUser){
@@ -774,19 +610,13 @@ export default function App() {
           else{setSetupData({fbUser,mode:"doc"});setUser(null);}
         }catch(e){
           const isPerm=e.code==="permission-denied"||e.message?.toLowerCase().includes("permission")||e.message?.toLowerCase().includes("missing or insufficient");
-          if(isPerm){setSetupData({fbUser,mode:"rules"});}else{setSetupData(null);}
-          setUser(null);
+          if(isPerm){setSetupData({fbUser,mode:"rules"});}else{setSetupData(null);}setUser(null);
         }
       }else{setUser(null);setSetupData(null);}
       setLoading(false);
     });
   },[]);
-  const retryLogin=()=>{
-    setSetupData(null);setLoading(true);
-    const fbUser=auth.currentUser;
-    if(fbUser){getDoc(doc(db,"users",fbUser.uid)).then(snap=>{if(snap.exists()&&snap.data().active!==false)setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});}).catch(()=>{}).finally(()=>setLoading(false));}
-    else{setLoading(false);}
-  };
+  const retryLogin=()=>{setSetupData(null);setLoading(true);const fbUser=auth.currentUser;if(fbUser){getDoc(doc(db,"users",fbUser.uid)).then(snap=>{if(snap.exists()&&snap.data().active!==false)setUser({uid:fbUser.uid,email:fbUser.email,...snap.data()});}).catch(()=>{}).finally(()=>setLoading(false));}else{setLoading(false);}};
   if(loading)return<Loading/>;
   if(setupData)return<FirestoreSetup fbUser={setupData.fbUser} onRetry={retryLogin}/>;
   if(!user)return<Login/>;
