@@ -5,7 +5,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
          createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 
-const APP_VERSION = "v1.0.9";
+const APP_VERSION = "v1.1.0";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDXUQtI8Mz8IghJZXzjzz5muBhqaHAL7ps",
@@ -200,8 +200,8 @@ const MiniBar = ({ income=0, expense=0, maxVal=1, label="" }) => {
   );
 };
 
-// Dashboard Tab
-const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
+// ── Dashboard Tab ─────────────────────────────────────────────────────────
+const DashboardTab = ({ txns, ccTxns=[], entityType, user, dashInsights=[], onRemoveInsight }) => {
   const allTxns = [...txns, ...ccTxns];
   const cfg = ENTITY_CONFIGS[entityType];
   const fmt = v => `$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2})}`;
@@ -239,6 +239,7 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
   const bankExp=txns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
   const ccInc=ccTxns.filter(t=>getCatType(t.aiCategory,entityType)==="income"&&t.amount>0).reduce((s,t)=>s+t.amount,0);
   const ccExp=ccTxns.filter(t=>getCatType(t.aiCategory,entityType)==="expense").reduce((s,t)=>s+Math.abs(t.amount),0);
+
   if(allTxns.length===0) return(
     <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"64px 24px",textAlign:"center"}}>
       <div style={{fontSize:48,marginBottom:12}}>\uD83D\uDCCA</div>
@@ -246,12 +247,15 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
       <div style={{fontSize:13,color:"#94a3b8"}}>Importe extratos para visualizar o dashboard.</div>
     </div>
   );
+
   return(
     <div>
       <div style={{marginBottom:20}}>
         <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:26,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>\uD83D\uDCCA Dashboard</h1>
-        <div style={{fontSize:12,color:"#64748b"}}>{user.company} \u00B7 {cfg.label} \u00B7 {cfg.form} \u00B7 Banco ({txns.length}) + Cart\u00E3o ({ccTxns.length})</div>
+        <div style={{fontSize:12,color:"#64748b"}}>{user.company} \u00B7 {cfg.label} \u00B7 {cfg.form} \u00B7 Banco ({txns.length}) + Cart\u00E3o ({ccTxns.length}){dashInsights.length>0&&` \u00B7 \uD83E\uDD16 ${dashInsights.length} an\u00E1lise${dashInsights.length!==1?"s":""} da IA`}</div>
       </div>
+
+      {/* KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:18}}>
         {[
           {l:"Receita Total",v:fmt(totInc),c:"#10b981",i:"\uD83D\uDCC8",cur:curM.income,prev:prvM.income},
@@ -271,6 +275,8 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
           </div>
         ))}
       </div>
+
+      {/* Charts Row */}
       <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"20px"}}>
           <div style={{fontWeight:700,fontSize:13,color:"#0f172a",marginBottom:2}}>Receitas vs Despesas \u2014 \u00FAltimos {recent.length} meses</div>
@@ -303,6 +309,8 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
           </div>
         </div>
       </div>
+
+      {/* Comparativo Mensal */}
       <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"20px",marginBottom:16}}>
         <div style={{fontWeight:700,fontSize:13,color:"#0f172a",marginBottom:14}}>\uD83D\uDCC5 Comparativo: M\u00EAs Atual vs M\u00EAs Anterior</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
@@ -324,6 +332,8 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
           ))}
         </div>
       </div>
+
+      {/* Banco vs Cartão */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"20px"}}>
           <div style={{fontWeight:700,fontSize:13,color:"#0f172a",marginBottom:14}}>\uD83C\uDFE6 Banco vs \uD83D\uDCB3 Cart\u00E3o de Cr\u00E9dito</div>
@@ -351,6 +361,54 @@ const DashboardTab = ({ txns, ccTxns=[], entityType, user }) => {
           {topCats.length===0&&<div style={{color:"#94a3b8",fontSize:12,textAlign:"center",padding:"16px 0"}}>Sem despesas classificadas</div>}
         </div>
       </div>
+
+      {/* ── Análises Personalizadas pela IA ────────────────────────────── */}
+      {dashInsights.length>0&&(
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:13,color:"#0f172a"}}>\uD83E\uDD16 An\u00E1lises Personalizadas pela IA</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Criadas via IA Chat \u2014 clique \u2715 para remover</div>
+            </div>
+            <button
+              onClick={()=>dashInsights.slice().reverse().forEach(ins=>onRemoveInsight&&onRemoveInsight(ins.id))}
+              style={{background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:10,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+            >
+              \uD83D\uDDD1 Limpar tudo
+            </button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+            {dashInsights.map(ins=>(
+              <div key={ins.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"16px",borderLeft:`4px solid ${ins.color||BRAND.touchColor}`,position:"relative",boxShadow:"0 2px 8px #0000000a"}}>
+                <button
+                  onClick={()=>onRemoveInsight&&onRemoveInsight(ins.id)}
+                  style={{position:"absolute",top:10,right:10,background:"#f1f5f9",border:"none",borderRadius:6,width:22,height:22,cursor:"pointer",fontSize:11,color:"#94a3b8",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",padding:0}}
+                >\u2715</button>
+                <div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:8,paddingRight:24}}>
+                  <span style={{fontSize:20,flexShrink:0}}>{ins.icon||"\uD83D\uDCCA"}</span>
+                  <div style={{fontWeight:700,fontSize:12,color:"#0f172a",lineHeight:1.4}}>{ins.title}</div>
+                </div>
+                <div style={{fontSize:12,color:"#475569",lineHeight:1.65,whiteSpace:"pre-wrap"}}>{ins.content}</div>
+                <div style={{fontSize:9,color:"#94a3b8",marginTop:10,paddingTop:8,borderTop:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span>Gerado pela IA em {ins.createdAt?new Date(ins.createdAt).toLocaleDateString("pt-BR"):""}</span>
+                  <span style={{background:`${ins.color||BRAND.touchColor}18`,color:ins.color||BRAND.touchColor,fontSize:8,fontWeight:700,padding:"1px 6px",borderRadius:8}}>IA</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CTA para IA quando não há insights */}
+      {dashInsights.length===0&&(
+        <div style={{background:"linear-gradient(135deg,#f0f9ff,#fdf4ff)",border:"1px dashed #c4b5fd",borderRadius:14,padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+          <span style={{fontSize:28}}>\uD83E\uDD16</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:"#7e22ce",marginBottom:2}}>Personalize este Dashboard com a IA</div>
+            <div style={{fontSize:12,color:"#64748b"}}>Acesse <strong>IA Chat</strong> e peça: <em>"Adiciona uma an\u00E1lise de sazonalidade no dashboard"</em> ou <em>"Cria um card com os alertas de gastos"</em>.</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -606,7 +664,7 @@ function exportQBO(txns,entityType,company){
 const ConfBar=({v=0})=>{const c=v>=.85?"#10b981":v>=.6?"#f59e0b":"#ef4444";return <div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:40,height:4,background:"#e2e8f0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${v*100}%`,background:c,borderRadius:2}}/></div><span style={{fontSize:10,color:c,fontWeight:700}}>{Math.round(v*100)}%</span></div>;};
 const CatBadge=({label,entityType})=>{const s=TYPE_META[getCatType(label,entityType)];return <span style={{background:s.bg,color:s.text,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,display:"inline-block",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>;};
 
-const OneTouchZone=({onDone,entityType,user,label="extrato banc\u00E1rio",color=BRAND.touchColor})=>{
+const OneTouchZone=({onDone,entityType,user,label:"extrato banc\u00E1rio",color=BRAND.touchColor})=>{
   const [phase,setPhase]=useState("idle"),[progress,setProgress]=useState(0),[count,setCount]=useState(0),[dragging,setDragging]=useState(false),fileRef=useRef();
   useEffect(()=>{if(!window.pdfjsLib){const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";s.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";};document.head.appendChild(s);}},[]);
   const process=useCallback(async(file)=>{
@@ -641,7 +699,7 @@ const OneTouchZone=({onDone,entityType,user,label="extrato banc\u00E1rio",color=
   );
 };
 
-// Credit Card Tab
+// ── Credit Card Tab ───────────────────────────────────────────────────────
 const CreditCardTab = ({ ccTxns, setCcTxns, entityType, user }) => {
   const [editId,setEditId]=useState(null),[editCat,setEditCat]=useState("");
   const cats=CATEGORIES[entityType]||CATEGORIES.smllc;
@@ -728,9 +786,10 @@ const CreditCardTab = ({ ccTxns, setCcTxns, entityType, user }) => {
   );
 };
 
-// AI Customize Tab
-const CustomizeTab = ({ txns, ccTxns=[], entityType, user }) => {
-  const [msgs,setMsgs]=useState([{role:"assistant",content:`Ol\u00E1 ${user.name?.split(" ")[0]}! \uD83D\uDC4B Sou o seu Assistente Financeiro OneTouch.\n\nPosso te ajudar com:\n\u2022 \uD83D\uDCCA An\u00E1lise das suas transa\u00E7\u00F5es\n\u2022 \uD83D\uDCA1 Estrat\u00E9gias de dedu\u00E7\u00E3o fiscal\n\u2022 \uD83D\uDCC5 Comparativos mensais\n\u2022 \u2753 D\u00FAvidas sobre categorias IRS\n\u2022 \uD83D\uDD0D Identificar padr\u00F5es de gastos\n\nO que voc\u00EA gostaria de saber sobre as suas finan\u00E7as?`}]);
+// ── AI Customize Tab ──────────────────────────────────────────────────────
+// Claude pode adicionar análises ao Dashboard via <DASHBOARD_INSIGHT> JSON block
+const CustomizeTab = ({ txns, ccTxns=[], entityType, user, onAddInsight }) => {
+  const [msgs,setMsgs]=useState([{role:"assistant",content:`Ol\u00E1 ${user.name?.split(" ")[0]}! \uD83D\uDC4B Sou o seu Assistente Financeiro OneTouch.\n\nPosso te ajudar com:\n\u2022 \uD83D\uDCCA An\u00E1lise das suas transa\u00E7\u00F5es\n\u2022 \uD83D\uDCA1 Estrat\u00E9gias de dedu\u00E7\u00E3o fiscal\n\u2022 \uD83D\uDCC5 Comparativos mensais\n\u2022 \u2753 D\u00FAvidas sobre categorias IRS\n\u2022 \uD83D\uDD0D Identificar padr\u00F5es de gastos\n\u2022 \uD83D\uDCCA Adicionar an\u00E1lises personalizadas ao Dashboard\n\nDica: diga "adiciona uma an\u00E1lise de X no meu dashboard" e eu crio um card l\u00E1!\n\nO que voc\u00EA gostaria de saber?`}]);
   const [input,setInput]=useState(""),[loading,setLoading]=useState(false);
   const bottomRef=useRef();
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
@@ -742,17 +801,33 @@ const CustomizeTab = ({ txns, ccTxns=[], entityType, user }) => {
   const catAcc={};
   allTxns.filter(t=>t.aiCategory&&getCatType(t.aiCategory,entityType)==="expense").forEach(t=>{catAcc[t.aiCategory]=(catAcc[t.aiCategory]||0)+Math.abs(t.amount);});
   const topCats=Object.entries(catAcc).sort(([,a],[,b])=>b-a).slice(0,8).map(([c,v])=>`${c}: $${v.toFixed(2)}`).join(", ");
-  const QUICK=["Quais s\u00E3o minhas maiores despesas?","Tenho alguma anomalia nos gastos?","Como posso maximizar minhas dedu\u00E7\u00F5es?","Qual foi meu melhor m\u00EAs de receita?","H\u00E1 gastos pessoais misturados?"];
+  const QUICK=[
+    "Quais s\u00E3o minhas maiores despesas?",
+    "Adiciona uma an\u00E1lise de sazonalidade no dashboard",
+    "Como posso maximizar minhas dedu\u00E7\u00F5es?",
+    "Cria um card de alertas de gastos no dashboard",
+    "H\u00E1 gastos pessoais misturados?",
+  ];
   const send=async(text)=>{
     const q=text||input.trim(); if(!q||loading) return;
     const newMsgs=[...msgs,{role:"user",content:q}];
     setMsgs(newMsgs);setInput("");setLoading(true);
-    const ctx=`Voc\u00EA \u00E9 o Assistente Financeiro OneTouch Tax para ${user.name} da empresa "${user.company}" (${cfg.label} \u2014 ${cfg.form}).\n\nDADOS FINANCEIROS ATUAIS:\n- Receita Total: $${totInc.toFixed(2)}\n- Despesas Dedut\u00EDveis: $${totExp.toFixed(2)}\n- N\u00E3o Dedut\u00EDveis: $${totND.toFixed(2)}\n- Lucro Estimado: $${(totInc-totExp).toFixed(2)}\n- Transa\u00E7\u00F5es Banc\u00E1rias: ${txns.length}\n- Transa\u00E7\u00F5es Cart\u00E3o: ${ccTxns.length}\n- Top Categorias de Despesa: ${topCats||"nenhuma classificada ainda"}\n- Ramo de Atividade: ${user.businessDescription||"n\u00E3o informado"}\n\nINSTRU\u00C7\u00D5ES:\n- Responda SEMPRE em portugu\u00EAs brasileiro.\n- Seja objetivo, amig\u00E1vel e especialista em impostos IRS americanos.\n\nCONVERSA:\n${newMsgs.map(m=>`${m.role==="user"?"Usu\u00E1rio":"Assistente"}: ${m.content}`).join("\n")}\nAssistente:`;
+    const ctx=`Voc\u00EA \u00E9 o Assistente Financeiro OneTouch Tax para ${user.name} da empresa "${user.company}" (${cfg.label} \u2014 ${cfg.form}).\n\nDADOS FINANCEIROS ATUAIS:\n- Receita Total: $${totInc.toFixed(2)}\n- Despesas Dedut\u00EDveis: $${totExp.toFixed(2)}\n- N\u00E3o Dedut\u00EDveis: $${totND.toFixed(2)}\n- Lucro Estimado: $${(totInc-totExp).toFixed(2)}\n- Transa\u00E7\u00F5es Banc\u00E1rias: ${txns.length}\n- Transa\u00E7\u00F5es Cart\u00E3o: ${ccTxns.length}\n- Top Categorias de Despesa: ${topCats||"nenhuma classificada ainda"}\n- Ramo de Atividade: ${user.businessDescription||"n\u00E3o informado"}\n\nINSTRU\u00C7\u00D5ES:\n- Responda SEMPRE em portugu\u00EAs brasileiro.\n- Seja objetivo, amig\u00E1vel e especialista em impostos IRS americanos.\n\nPARA ADICIONAR AN\u00C1LISE AO DASHBOARD:\nSe o usu\u00E1rio pedir para adicionar, salvar ou criar uma an\u00E1lise no dashboard, inclua no FINAL da resposta (depois do texto normal) este bloco exato:\n<DASHBOARD_INSIGHT>\n{"title":"T\u00EDtulo claro da an\u00E1lise","content":"Texto detalhado da an\u00E1lise (use \\\\n para quebras de linha)","icon":"\uD83D\uDCCA","color":"#1055b8"}\n</DASHBOARD_INSIGHT>\nCores dispon\u00EDveis: #10b981=verde, #ef4444=vermelho, #f59e0b=amarelo, #8b5cf6=roxo, #ec4899=rosa, #1055b8=azul.\nUse cor verde para insights positivos, vermelho para alertas, roxo para curiosidades.\n\nCONVERSA:\n${newMsgs.map(m=>`${m.role==="user"?"Usu\u00E1rio":"Assistente"}: ${m.content}`).join("\n")}\nAssistente:`;
     try{
       const res=await fetch("/api/classify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[{role:"user",content:ctx}]})});
       const data=await res.json();
-      const reply=(data.content?.[0]?.text||"").replace(/^Assistente:\s*/,"").trim()||"Desculpe, n\u00E3o consegui processar. Tente novamente.";
-      setMsgs(p=>[...p,{role:"assistant",content:reply}]);
+      let rawReply=(data.content?.[0]?.text||"").replace(/^Assistente:\s*/,"").trim()||"Desculpe, n\u00E3o consegui processar. Tente novamente.";
+      // Parse <DASHBOARD_INSIGHT> block
+      const insightMatch=rawReply.match(/<DASHBOARD_INSIGHT>([\s\S]*?)<\/DASHBOARD_INSIGHT>/);
+      if(insightMatch&&onAddInsight){
+        try{
+          const insData=JSON.parse(insightMatch[1].trim());
+          onAddInsight({...insData,id:Date.now().toString(),createdAt:new Date().toISOString()});
+          rawReply=rawReply.replace(/<DASHBOARD_INSIGHT>[\s\S]*?<\/DASHBOARD_INSIGHT>/,"").trim();
+          rawReply=(rawReply?rawReply+"\n\n":"")+"\u2705 An\u00E1lise \u201C"+insData.title+"\u201D adicionada ao seu Dashboard! Acesse a aba \uD83D\uDCCA Dashboard para ver.";
+        }catch(e){console.error("insight parse error:",e);}
+      }
+      setMsgs(p=>[...p,{role:"assistant",content:rawReply}]);
     }catch{setMsgs(p=>[...p,{role:"assistant",content:"Erro de conex\u00E3o. Verifique sua internet e tente novamente."}]);}
     setLoading(false);
   };
@@ -760,7 +835,7 @@ const CustomizeTab = ({ txns, ccTxns=[], entityType, user }) => {
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 80px)"}}>
       <div style={{marginBottom:14,flexShrink:0}}>
         <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 4px",letterSpacing:"-1px"}}>\uD83E\uDD16 Assistente IA</h1>
-        <div style={{fontSize:12,color:"#64748b"}}>Claude analisa seus dados financeiros e responde em tempo real</div>
+        <div style={{fontSize:12,color:"#64748b"}}>Claude analisa seus dados e pode <strong>adicionar an\u00E1lises personalizadas ao Dashboard</strong></div>
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12,flexShrink:0}}>
         {QUICK.map(q=>(
@@ -780,7 +855,7 @@ const CustomizeTab = ({ txns, ccTxns=[], entityType, user }) => {
           <div ref={bottomRef}/>
         </div>
         <div style={{borderTop:"1px solid #e2e8f0",padding:"12px 16px",display:"flex",gap:10,alignItems:"center",flexShrink:0}}>
-          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Pergunte sobre suas finan\u00E7as... (Enter para enviar)" disabled={loading} style={{flex:1,background:"#f8fafc",border:"1.5px solid #e2e8f0",color:"#0f172a",padding:"10px 14px",borderRadius:12,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Pergunte ou pe\u00E7a uma an\u00E1lise pro dashboard... (Enter)" disabled={loading} style={{flex:1,background:"#f8fafc",border:"1.5px solid #e2e8f0",color:"#0f172a",padding:"10px 14px",borderRadius:12,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
           <button onClick={()=>send()} disabled={loading||!input.trim()} style={{background:loading||!input.trim()?"#94a3b8":BRAND.gradient,color:"#fff",border:"none",borderRadius:12,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:loading||!input.trim()?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>{loading?"...":"\u2192"}</button>
           {msgs.length>1&&<button onClick={()=>setMsgs([msgs[0]])} style={{background:"#f8fafc",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>\uD83D\uDDD1</button>}
         </div>
@@ -829,27 +904,31 @@ const FirestoreSetup=({fbUser,onRetry})=>{
   );
 };
 
+// ── Client App ────────────────────────────────────────────────────────────
 const ClientApp=({user,onLogout})=>{
   const [tab,setTab]=useState("home");
   const [entityType,setEntityType]=useState(user.entityType||"smllc");
   const [txns,setTxns]=useState(user.transactions||[]);
   const [ccTxns,setCcTxns]=useState(user.ccTransactions||[]);
+  const [dashInsights,setDashInsights]=useState(user.dashInsights||[]);
   const [saveStatus,setSaveStatus]=useState("");
   const [initDone,setInitDone]=useState(false);
   const [editTxnId,setEditTxnId]=useState(null);
   const [editTxnCat,setEditTxnCat]=useState("");
+
   useEffect(()=>{ const t=setTimeout(()=>setInitDone(true),500); return()=>clearTimeout(t); },[]);
   useEffect(()=>{
     if(!initDone) return;
     setSaveStatus("saving");
     const t=setTimeout(async()=>{
       try{
-        await updateDoc(doc(db,"users",user.uid),{transactions:txns,ccTransactions:ccTxns,entityType,txnUpdatedAt:new Date().toISOString()});
+        await updateDoc(doc(db,"users",user.uid),{transactions:txns,ccTransactions:ccTxns,dashInsights,entityType,txnUpdatedAt:new Date().toISOString()});
         setSaveStatus("saved"); setTimeout(()=>setSaveStatus(""),2000);
       }catch(e){console.error("Save error:",e);setSaveStatus("");}
     },1500);
     return()=>clearTimeout(t);
-  },[txns,ccTxns,entityType,initDone]);
+  },[txns,ccTxns,dashInsights,entityType,initDone]);
+
   const cfg=ENTITY_CONFIGS[entityType];
   const cats2=CATEGORIES[entityType]||CATEGORIES.smllc;
   const allTxns=[...txns,...ccTxns];
@@ -858,6 +937,7 @@ const ClientApp=({user,onLogout})=>{
   const nonDed=allTxns.filter(t=>getCatType(t.aiCategory,entityType)==="nondeduc").reduce((s,t)=>s+Math.abs(t.amount),0);
   const pending=txns.filter(t=>t.status==="pending").length+ccTxns.filter(t=>t.status==="pending").length;
   const approved=txns.filter(t=>t.status==="approved").length;
+
   const NAV=[
     {id:"home",label:"Home",icon:"\uD83C\uDFE0"},
     {id:"dashboard",label:"Dashboard",icon:"\uD83D\uDCCA"},
@@ -869,10 +949,12 @@ const ClientApp=({user,onLogout})=>{
     {id:"customize",label:"IA Chat",icon:"\uD83E\uDD16"},
     {id:"settings",label:"Config.",icon:"\u2699\uFE0F"},
   ];
+
   const approveT=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"approved"}:t));
   const rejectT=id=>setTxns(p=>p.map(t=>t.id===id?{...t,status:"rejected"}:t));
   const approveAll=()=>setTxns(p=>p.map(t=>t.status==="pending"?{...t,status:"approved"}:t));
   const saveTxnEdit=id=>{setTxns(p=>p.map(t=>t.id===id?{...t,aiCategory:editTxnCat,status:"pending"}:t));setEditTxnId(null);};
+
   return(
     <div style={{minHeight:"100vh",background:"#f8faff",fontFamily:"'Manrope',system-ui",display:"flex"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap');*{box-sizing:border-box;}.ntb{background:none;border:none;padding:8px 12px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;display:flex;align-items:center;gap:7px;transition:all .15s;color:#64748b;width:100%;}.ntb.a{background:#f0f9ff;color:${BRAND.touchColor};font-weight:700;}.ntb:hover:not(.a){background:#f1f5f9;color:#334155;}.card{background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:22px;}.ab{border:none;padding:5px 11px;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:3px;}.gn{background:#f0fdf4;color:#15803d;}.gn:hover{background:#dcfce7;}.rd{background:#fef2f2;color:#dc2626;}.rd:hover{background:#fee2e2;}.bl{background:#f0f9ff;color:${BRAND.touchColor};}.bl:hover{background:#e0f2fe;}@keyframes spin{to{transform:rotate(360deg);}}@keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}.edit-sel{border:1.5px solid ${BRAND.touchColor};border-radius:8px;padding:3px 7px;font-family:inherit;font-size:11px;color:#0f172a;background:#fff;outline:none;max-width:150px;}`}</style>
@@ -889,6 +971,7 @@ const ClientApp=({user,onLogout})=>{
             {n.id==="import"&&<span style={{marginLeft:"auto",background:BRAND.touchColor,color:"#fff",fontSize:8,fontWeight:800,padding:"1px 6px",borderRadius:10}}>1 toque</span>}
             {n.id==="transactions"&&txns.filter(t=>t.status==="pending").length>0&&<span style={{marginLeft:"auto",background:"#f59e0b",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 6px",borderRadius:10}}>{txns.filter(t=>t.status==="pending").length}</span>}
             {n.id==="creditcard"&&ccTxns.filter(t=>t.status==="pending").length>0&&<span style={{marginLeft:"auto",background:"#ec4899",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 6px",borderRadius:10}}>{ccTxns.filter(t=>t.status==="pending").length}</span>}
+            {n.id==="dashboard"&&dashInsights.length>0&&<span style={{marginLeft:"auto",background:"#8b5cf6",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 6px",borderRadius:10}}>{dashInsights.length}</span>}
             {n.id==="customize"&&<span style={{marginLeft:"auto",background:"linear-gradient(135deg,#8b5cf6,#ec4899)",color:"#fff",fontSize:7,fontWeight:800,padding:"1px 5px",borderRadius:10}}>IA</span>}
           </button>)}
         </nav>
@@ -927,13 +1010,17 @@ const ClientApp=({user,onLogout})=>{
             </div>
           )}
         </div>}
-        {tab==="dashboard"&&<DashboardTab txns={txns} ccTxns={ccTxns} entityType={entityType} user={user}/>}
+
+        {tab==="dashboard"&&<DashboardTab txns={txns} ccTxns={ccTxns} entityType={entityType} user={user} dashInsights={dashInsights} onRemoveInsight={id=>setDashInsights(p=>p.filter(x=>x.id!==id))}/>}
+
         {tab==="import"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Importar Extrato Banc\u00E1rio</h1>
           <p style={{color:"#64748b",margin:"0 0 20px",fontSize:13}}>Um arquivo. Um clique. Classifica\u00E7\u00E3o imediata \u2014 regras <strong>{cfg.form}</strong>.</p>
           <OneTouchZone onDone={t=>{setTxns(p=>[...p,...t]);setTab("transactions");}} entityType={entityType} user={user}/>
         </div>}
+
         {tab==="creditcard"&&<CreditCardTab ccTxns={ccTxns} setCcTxns={setCcTxns} entityType={entityType} user={user}/>}
+
         {tab==="transactions"&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div>
@@ -973,7 +1060,9 @@ const ClientApp=({user,onLogout})=>{
           </div>)}
           <div style={{marginTop:8,fontSize:10,color:"#94a3b8",display:"flex",gap:14}}><span>\u2713 Confirmadas: <strong>{approved}</strong></span><span>\u23F3 Pendentes: <strong>{txns.filter(t=>t.status==="pending").length}</strong></span></div>
         </div>}
+
         {tab==="summary"&&<MonthlySummaryTab txns={txns} entityType={entityType} user={user}/>}
+
         {tab==="export"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 6px",letterSpacing:"-1px"}}>Exportar</h1>
           <p style={{color:"#64748b",margin:"0 0 24px",fontSize:13}}>Exporte as transa\u00E7\u00F5es classificadas.</p>
@@ -985,7 +1074,9 @@ const ClientApp=({user,onLogout})=>{
           </div>}
           <div style={{marginTop:14,padding:"11px 15px",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:10,fontSize:12,color:"#92400e"}}>\uD83D\uDCA1 Confirme as transa\u00E7\u00F5es antes de exportar. \u26D4 N\u00E3o dedut\u00EDveis n\u00E3o reduzem a renda tribut\u00E1vel.</div>
         </div>}
-        {tab==="customize"&&<CustomizeTab txns={txns} ccTxns={ccTxns} entityType={entityType} user={user}/>}
+
+        {tab==="customize"&&<CustomizeTab txns={txns} ccTxns={ccTxns} entityType={entityType} user={user} onAddInsight={ins=>setDashInsights(p=>[...p,ins])}/>}
+
         {tab==="settings"&&<div>
           <h1 style={{fontFamily:"'Manrope',system-ui",fontSize:24,fontWeight:800,color:"#0f172a",margin:"0 0 20px",letterSpacing:"-1px"}}>Configura\u00E7\u00F5es</h1>
           <div className="card" style={{marginBottom:14}}><h3 style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:12}}>\uD83C\uDFE2 Tipo de Empresa</h3><div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>{Object.entries(ENTITY_CONFIGS).map(([key,c])=><div key={key} onClick={()=>setEntityType(key)} style={{padding:"12px 14px",borderRadius:12,cursor:"pointer",transition:"all .15s",border:`1.5px solid ${entityType===key?c.color:"#e2e8f0"}`,background:entityType===key?"#f8faff":"#fff"}}><div style={{display:"flex",justifyContent:"space-between"}}><div style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>{c.label}</div>{entityType===key&&<span style={{fontSize:10,fontWeight:700,color:c.color}}>\u2713</span>}</div><div style={{fontSize:10,color:c.color,fontWeight:600,marginTop:2}}>{c.form}</div></div>)}</div></div>
