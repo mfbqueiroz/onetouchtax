@@ -1,0 +1,61 @@
+name: Fix App.jsx (unicode + label=)
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fix unicode escapes and label syntax
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('src/App.jsx', 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Fix 1: label: -> label=
+          content = content.replace(
+              'label:"extrato banc\\u00E1rio"',
+              'label="extrato banc\u00e1rio"'
+          )
+
+          # Fix 2: surrogate pairs (emojis \uD83D\uDC4B etc)
+          def replace_surrogate(m):
+              high = int(m.group(1), 16)
+              low  = int(m.group(2), 16)
+              cp   = 0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00)
+              return chr(cp)
+
+          content = re.sub(
+              r'\\u([Dd][89AaBb][0-9A-Fa-f]{2})\\u([Dd][CcDdEeFf][0-9A-Fa-f]{2})',
+              replace_surrogate,
+              content
+          )
+
+          # Fix 3: remaining \uXXXX
+          content = re.sub(
+              r'\\u([0-9A-Fa-f]{4})',
+              lambda m: chr(int(m.group(1), 16)),
+              content
+          )
+
+          with open('src/App.jsx', 'w', encoding='utf-8') as f:
+              f.write(content)
+
+          print('App.jsx corrigido com sucesso!')
+          PYEOF
+
+      - name: Commit e push
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action Fix Bot"
+          git add src/App.jsx
+          git diff --staged --quiet && echo 'Nenhuma alteracao necessaria' || (
+            git commit -m 'fix: unicode chars reais + label= em OneTouchZone (v1.1.0)'
+            git push
+          )
