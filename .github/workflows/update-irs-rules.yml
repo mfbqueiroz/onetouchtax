@@ -1,0 +1,55 @@
+name: Update IRS Rules 2024/2025
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update ENTITY_RULES with 2024/2025 IRS rules
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          NEW_RULES = '''const ENTITY_RULES={
+  smllc:"SCHEDULE C 2024/2025: Business revenue->Gross Receipts or Sales. Business insurance->Insurance (Business). Internet/cable/electric/phone->Utilities. W-2 payroll->Wages (W-2 Employees). Gas/fuel->Car & Truck - Gasoline (mileage rate: 67¢/mi 2024, 70¢/mi 2025). Vehicle repairs->Car & Truck - Repairs. Owner draws/personal->Owner's Draw (NOT deductible). Loan interest->Interest - Other. State/county/local taxes & licenses->Taxes & Licenses. 1099-NEC contractors->Contract Labor (1099-NEC). Attorney/accountant->Legal & Professional Services. Personal grocery/clothing->Personal (Non-Deductible). Bank transfers->Transfer. Business meals 50% deductible->Meals (50% deductible). Home office simplified $5/sqft max 300sqft->Office Expenses. Section 179 limit $1,160,000 (2024); Bonus Depreciation 60% (2024) 40% (2025)->Depreciation / Section 179. Business rent->Rent - Business Property. Airfare/hotel/car rental->Travel (Business). Materials/supplies->Supplies. Ads/marketing/social media->Advertising. Business repairs->Repairs & Maintenance. NOTE: QBI deduction 20% and SE tax deduction 50% apply at personal return level.",
+  scorp:"FORM 1120-S 2024/2025: Revenue->Gross Receipts or Sales. Owner salary REQUIRED by IRS (must be reasonable compensation)->Compensation of Officers. Other employee wages->Salaries & Wages (Other Emp.). Shareholder distributions NOT deductible (K-1 pass-through)->Shareholder Distributions. Health insurance premiums for owner-employee (add to W-2 box 1, deductible at individual level)->Compensation of Officers. Business rent->Rents. Loan interest->Interest Expense. Taxes & licenses->Taxes & Licenses. Section 179 $1,160,000 / Bonus depreciation 60% (2024)->Depreciation. Advertising->Advertising. Repairs->Repairs & Maintenance. Employee benefits/group health->Employee Benefits. NOTE: QBI deduction 20% pass-through applies at shareholder personal return.",
+  ccorp:"FORM 1120 2024/2025: Revenue->Gross Receipts or Sales. Officer/executive salaries->Compensation of Officers. Employee wages->Salaries & Wages. Business rent->Rents. Loan interest->Interest Expense. State/local taxes->Taxes & Licenses. Charitable contributions max 10% of taxable income->Charitable Contributions. Section 179 $1,160,000 / Bonus depreciation 60% (2024)->Depreciation. Dividends paid to shareholders NOT deductible->Dividends Paid to Shareholders. Personal expenses of officers NOT deductible->Personal Expenses of Officers. Advertising->Advertising. Employee benefits/health insurance->Employee Benefits. NOTE: Corporate tax rate flat 21%. No QBI deduction for C-Corps.",
+  mmllc:"FORM 1065 2024/2025: Revenue->Gross Receipts or Sales. Employee wages->Salaries & Wages. Guaranteed payments to partners (fixed regardless of profit)->Guaranteed Payments to Partners. Partner distributions NOT deductible (K-1 pass-through)->Partner Distributions (K-1). Business rent->Rent. Loan interest->Interest Expense. Taxes & licenses->Taxes & Licenses. Section 179 $1,160,000 / Bonus depreciation 60% (2024)->Depreciation. Advertising->Advertising. Employee benefits->Employee Benefits. NOTE: Each partner receives K-1. QBI deduction 20% at partner personal return level.",
+  partnership:"FORM 1065 2024/2025: Same rules as Multi-Member LLC. Revenue->Gross Receipts or Sales. Guaranteed payments to partners->Guaranteed Payments to Partners. Partner distributions NOT deductible->Partner Distributions. Business expenses same as MMLLC. NOTE: Each partner gets K-1 for pass-through income. QBI deduction 20% applies at partner personal return level.",
+  sole_prop:"SCHEDULE C 2024/2025: Same rules as Single-Member LLC. Revenue->Gross Receipts or Sales. Mileage 67¢/mi (2024) or 70¢/mi (2025) OR actual vehicle expenses->Car & Truck - Gasoline. Home office simplified $5/sqft max 300sqft->Office Expenses. Section 179 $1,160,000 (2024) / Bonus depreciation 60% (2024) 40% (2025)->Depreciation. Self-employed health insurance->Insurance. 1099-NEC contractors->Contract Labor (1099-NEC). Owner draws->Owner's Draw (NOT deductible). NOTE: QBI deduction 20% of qualified business income and SE tax deduction 50% of self-employment tax apply at personal return level.",
+};
+'''
+
+          with open('src/App.jsx', 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Replace ENTITY_RULES block
+          updated = re.sub(
+              r'const ENTITY_RULES=\{[\s\S]*?\};',
+              NEW_RULES.strip(),
+              content,
+              count=1
+          )
+
+          if updated == content:
+              print('AVISO: ENTITY_RULES nao encontrado, verificar pattern')
+          else:
+              print('ENTITY_RULES atualizado com regras IRS 2024/2025!')
+              with open('src/App.jsx', 'w', encoding='utf-8') as f:
+                  f.write(updated)
+          PYEOF
+
+      - name: Commit e push
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "IRS Rules Update Bot"
+          git add src/App.jsx
+          git diff --staged --quiet && echo 'Sem alteracoes' || (
+            git commit -m "feat: atualiza ENTITY_RULES com regras IRS 2024/2025 (mileage, Section 179, Bonus Depreciation, QBI, health insurance)"
+            git push
+          )
